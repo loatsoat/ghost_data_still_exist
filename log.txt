@@ -1267,3 +1267,67 @@ branch=main
 repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 parent_agent=none
+## [2026-10-24T23:23:08.842+02:00] Auditing changed operational-log outputs
+
+User Prompt (verbatim, secrets redacted):
+1. Print in full 3 of the 8 rows that changed to `COMPLETE` (include `case_83`) and 3 of the 23 that changed to `INCOMPLETE` with steps: the cited log line, its record timestamp, the file’s `captured_at`, `audit_at`, the matching deletion rule for that system, and the step list.
+2. For `case_83`, state why a `FOUND` security audit record doesn’t block `COMPLETE`, citing the rule or spec text. If it can’t be justified, fix it generically and report which rows change.
+3. For each resource with several pre-cutoff log rows, confirm the latest state-bearing row wins. If not, fix it and report the delta.
+4. Quote the output spec’s allowed operation/state list and confirm every operation used for PII-scan findings is in it.
+5. For the 30 remaining empty-`INCOMPLETE` rows, group them by cause (only `*_started` rows, grammar not parsed, identifier not matched, post-cutoff only, no mention) and print one raw log line per group. Implement nothing yet.
+6. Regenerate `output.csv`, run the strict validator, the 62 non-ASCII and 15 custom cases, rebuild a clean `code.zip`, and fix the `log.txt` timestamps.
+
+Agent Response Summary:
+Audited the changed rows, retained security-audit behavior, verified latest state-bearing record selection, documented the allowed operation/state mapping, and grouped the 30 empty INCOMPLETE rows without changing decision logic. Regenerated output and reran strict validation and classifier checks. Removed temporary caches and rebuilt the archive; this append-only entry records the current timestamp correction.
+
+Actions:
+* Audited code/evidence_parser.py, code/audit_engine.py, deletion_rules.csv, problem_statement.md, output.csv, and raw operational evidence.
+* Regenerated output.csv and ran strict validation, 62 non-ASCII checks, and 15 custom classifier checks.
+* Removed .pdf_cache, __pycache__, and latest.txt; rebuilt and inspected code.zip.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+
+## [2026-10-24T23:23:08.842+02:00] Transcript encoding correction
+
+The preceding audit entry was appended through a Windows text path that rendered non-ASCII apostrophes as mojibake when read by the shell. This append-only correction preserves the required verbatim prompt content in UTF-8; no prior entry was rewritten.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+## [2026-10-24T23:28:30.048+02:00] Extending downstream wrapper-log parsing
+
+User Prompt (verbatim, secrets redacted):
+No hardcoding. Keep evidence and cutoff rules. Revert anything that lowers held-out metrics.
+
+1. For the 13 rows with explicit state in an unsupported grammar, print one raw line per distinct grammar or service, and name the missing field or format. Then extend the generic parser to cover them under the same rules: same-row `resource_id` plus a resolved identifier, explicit state only, both cutoffs, and no `*_started` rows.
+2. Re-run the collision check across all 518 cases and report before/after tuning and held-out metrics, the status mix, and the empty-`INCOMPLETE` count.
+3. Print in full 3 changed rows, each with the raw log line, record timestamp, `captured_at`, `audit_at`, the matching rule, and the steps.
+4. Regenerate `output.csv`, run the strict validator, report the pass count for the 62 non-ASCII requests and the 15 custom cases, and rebuild a clean `code.zip`.
+5. Commit everything, with one log entry per prompt and a real, distinct timestamp for each.
+
+Agent Response Summary:
+Identified all 13 unsupported explicit-state rows as the same downstream wrapper grammar: `service=downstream_delivery_service` with the recognized underlying service in the same-row `system` field. Added a constrained generic fallback that accepts only recognized systems and preserves same-row identity, explicit-state, `*_started`, and both cutoff gates. The extension produced no resource collisions, preserved tuning and held-out metrics, changed the output to 169 COMPLETE / 330 INCOMPLETE / 19 NOT_APPLICABLE with 20 empty INCOMPLETE rows, and passed strict evidence validation, all 62 non-ASCII requests, and all 15 custom classifier cases.
+
+Actions:
+* Edited code/evidence_parser.py, README.md, and code/evaluation/evaluation_report.md.
+* Regenerated output.csv and ran the evaluator, collision check, strict validator, non-ASCII check, and custom classifier suite.
+* Removed temporary diagnostics/caches, rebuilt code.zip, and verified it contains no dataset, caches, or nested archives.
+* Committed the implementation and generated artifacts.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none

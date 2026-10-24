@@ -76,30 +76,22 @@ Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custo
 | Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |
 | Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |
 
-## Generic Operational-Log Parser
+## Downstream Wrapper-Log Extension
 
-The operational-log parser was extended without case, resource, or file-specific
-rules. It normalizes direct key/value, pipe-delimited, syslog, and nested
-cloud-runtime messages. A log row is eligible only when the same row contains
-`resource_id` and one of `subject_reference`, `subject_ref`, `lookup_key`,
-`owner_key`, `owner_email`, `match_key`, `matched_value`, `correlation_key`,
-`scan_key`, or `subject_key`. Values are matched only against resolved user
-IDs, current or historical emails, phones, and email hashes.
+The remaining explicit-state log rows were in a downstream wrapper grammar:
+the outer row used `service=downstream_delivery_service`, while the recognized
+underlying service was carried in the same row's `system` field. The generic
+parser now selects the underlying service only when that field is one of the
+recognized service grammars. It still requires the same-row `resource_id` and
+an allowed resolved identifier, maps only explicit state signals, ignores
+`*_started` rows, and enforces both capture and record-time cutoffs.
 
-State mapping is explicit:
+The extension parsed 13 previously unsupported rows. The 13 rows were not
+split into case-specific rules: all used the same wrapper format and had
+`event=record_lookup`, `record_type`, `result`, `resource_id`, and
+`subject_reference` fields.
 
-- `NOT_FOUND` or `rows=0` -> `ABSENT`
-- `FOUND` or `hit` -> `PRESENT`
-- `rows>=1` with `http_status=200` -> `PRESENT`
-- `available=true` -> `PRESENT`
-- PII-scan warnings -> `PRESENT` only for analytics and support record types
-- `*_started` rows are ignored as non-state
-
-The parser enforces both file `captured_at <= audit_at` and record timestamp
-`<= audit_at` through the existing evidence matcher. A full 518-case collision
-check found zero resources linked to more than one resolved user.
-
-| Metric | Baseline | Operational-log parser | Delta |
+| Metric | Before extension | After extension | Delta |
 |---|---:|---:|---:|
 | Tuning precision | 0.987 | 0.987 | 0.000 |
 | Tuning recall | 0.806 | 0.806 | 0.000 |
@@ -110,12 +102,8 @@ check found zero resources linked to more than one resolved user.
 | Held-out F1 | 0.829 | 0.829 | 0.000 |
 | Held-out status accuracy | 0.875 | 0.875 | 0.000 |
 
-The full output changed from `159/340/19` COMPLETE/INCOMPLETE/NOT_APPLICABLE
-to `167/332/19`. Empty INCOMPLETE rows decreased from 57 to 30; empty COMPLETE
-rows remained zero. Thirty-one rows changed relative to the tagged baseline:
-10 in the `case_83` block, 1 in the `case_168` block, 5 in the `case_263`
-block, 7 in the `case_413` block, and 4 in the `case_513` block.
-
-The strict output check found 518 rows, valid JSON and step numbering, zero
-post-cutoff or missing evidence IDs, and zero empty COMPLETE rows. The 62
-non-ASCII requests and all 15 custom classifier cases still pass.
+The full-output status mix is now `169 COMPLETE / 330 INCOMPLETE /
+19 NOT_APPLICABLE`, with 20 empty `INCOMPLETE` rows and zero empty
+`COMPLETE` rows. The 518-case collision check found zero resources linked to
+more than one resolved user. All 62 non-ASCII requests were processed and all
+15 custom classifier cases passed.

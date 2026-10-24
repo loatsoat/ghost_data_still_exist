@@ -43,7 +43,9 @@ The evidence parser also handles direct key/value, pipe-delimited, syslog, and
 nested cloud-runtime logs. It accepts a log record only when a same-row
 `resource_id` is paired with a resolved user identifier (current or historical
 email, phone, hash, or user ID), and applies both file-capture and record-time
-cutoffs at `audit_at`.
+cutoffs at `audit_at`. For wrapper or downstream services, it uses a recognized
+same-row `system` field to select the underlying service grammar; it does not
+infer state from the wrapper service name.
 
 
 ## Dataset

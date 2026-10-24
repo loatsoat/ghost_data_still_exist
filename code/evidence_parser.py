@@ -726,6 +726,16 @@ class EvidenceParser:
             service     = kv.get('service', '')
             if service == 'support_replica':
                 service = 'support_platform'
+            if service not in {
+                'account_service', 'search_service', 'analytics_platform',
+                'support_platform', 'security_service', 'export_service',
+            }:
+                system_service = kv.get('system', '')
+                if system_service in {
+                    'account_service', 'search_service', 'analytics_platform',
+                    'support_platform', 'security_service', 'export_service',
+                }:
+                    service = system_service
             event       = kv.get('event', '')
             resource_id = kv.get('resource_id')
             if not resource_id:
