@@ -1,0 +1,107 @@
+[
+  {
+    "id": "custom_01",
+    "type": "access_request",
+    "request_text": "I would like to access all the personal data you hold about me. Please send me a full copy of my records under GDPR Article 15.",
+    "expected_authorizes_deletion": false,
+    "notes": "Pure access request, no deletion intent."
+  },
+  {
+    "id": "custom_02",
+    "type": "correction_request",
+    "request_text": "My date of birth on file is incorrect. Please correct my personal information to reflect the right date of birth: 15 March 1988.",
+    "expected_authorizes_deletion": false,
+    "notes": "Correction/rectification only."
+  },
+  {
+    "id": "custom_03",
+    "type": "export_request",
+    "request_text": "Please export my data so I can take it to another service. I want a machine-readable download of everything you hold about me.",
+    "expected_authorizes_deletion": false,
+    "notes": "Data portability / export request only."
+  },
+  {
+    "id": "custom_04",
+    "type": "marketing_optout",
+    "request_text": "Please unsubscribe me from all marketing emails and promotional communications. I no longer want to receive newsletters from your company.",
+    "expected_authorizes_deletion": false,
+    "notes": "Marketing opt-out only, no account deletion."
+  },
+  {
+    "id": "custom_05",
+    "type": "non_english_deletion",
+    "request_text": "Ich möchte mein Konto dauerhaft löschen und alle damit verbundenen persönlichen Daten entfernen lassen. Bitte bestätigen Sie die Löschung.",
+    "expected_authorizes_deletion": true,
+    "notes": "German: explicit account deletion request."
+  },
+  {
+    "id": "custom_06",
+    "type": "non_english_non_deletion",
+    "request_text": "Veuillez me donner accès à toutes mes données personnelles conformément au RGPD. Je souhaite recevoir une copie de mes informations.",
+    "expected_authorizes_deletion": false,
+    "notes": "French: GDPR access request only, no deletion."
+  },
+  {
+    "id": "custom_07",
+    "type": "deletion_with_incidental_keywords",
+    "request_text": "I'm deleting my account. You can keep anonymous statistics, but nothing in analytics should still point back to me. Please remove all personal information.",
+    "expected_authorizes_deletion": true,
+    "notes": "Deletion intent with incidental 'anonymous statistics' and 'analytics' — was incorrectly classified as NOT_APPLICABLE before Phase 1 fix."
+  },
+  {
+    "id": "custom_08",
+    "type": "deletion_mentions_export",
+    "request_text": "Please delete my account permanently. I know I previously requested an export of my data, but I now want everything erased. Close the account and remove all records.",
+    "expected_authorizes_deletion": true,
+    "notes": "Mentions 'export' incidentally but primary intent is deletion."
+  },
+  {
+    "id": "custom_09",
+    "type": "deletion_mentions_correct",
+    "request_text": "Before you process the deletion, please make sure you correct any typos in my name in the final audit record. Then delete everything else permanently.",
+    "expected_authorizes_deletion": true,
+    "notes": "Mentions 'correct' incidentally but requests deletion."
+  },
+  {
+    "id": "custom_10",
+    "type": "non_english_deletion_korean",
+    "request_text": "이 계정과 관련된 모든 개인 정보를 영구적으로 삭제해 주세요. 삭제 요청을 처리해 주시기 바랍니다.",
+    "expected_authorizes_deletion": true,
+    "notes": "Korean: explicit deletion request."
+  },
+  {
+    "id": "custom_11",
+    "type": "ambiguous_complaint",
+    "request_text": "I am very unhappy with how my data has been handled. This is unacceptable and I want to make a formal complaint about your data practices.",
+    "expected_authorizes_deletion": false,
+    "notes": "Complaint only, no deletion intent — should be NOT_APPLICABLE."
+  },
+  {
+    "id": "custom_12",
+    "type": "tombstone_scenario",
+    "request_text": "Please remove my name and contact details from the account. You can keep an internal reference for order history but all identifying information must be gone.",
+    "expected_authorizes_deletion": true,
+    "notes": "Partial deletion / tombstone scenario — still authorizes deletion of personal data."
+  },
+  {
+    "id": "custom_13",
+    "type": "email_change_request",
+    "request_text": "Please change the email address on my account and keep all of my records in place.",
+    "expected_authorizes_deletion": false,
+    "notes": "Account-field update only."
+  },
+  {
+    "id": "custom_14",
+    "type": "login_recovery_request",
+    "request_text": "I cannot access my profile. Please reset my login without closing the account.",
+    "expected_authorizes_deletion": false,
+    "notes": "Access recovery only."
+  },
+  {
+    "id": "custom_15",
+    "type": "invoice_copy_request",
+    "request_text": "Please send me a copy of last year's invoices. Leave my profile and purchase history unchanged.",
+    "expected_authorizes_deletion": false,
+    "notes": "Record-copy request only."
+  }
+]

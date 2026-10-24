@@ -155,3 +155,68 @@ Before submitting, confirm that:
 - `code.zip` includes your runnable code, `README.md`, `code/evaluation/evaluation_report.md`, and `code/evaluation/usage_report.md`;
 - `log.txt` follows the `AGENTS.md` turn format and is uploaded to the `chat_transcript` slot; and
 - no API keys, credentials, real personal data, or sensitive configuration values are included.
+## Ghost Data Still Exists
+
+This repository contains a deterministic deletion-audit pipeline for the
+HackerRank Orchestrate challenge. It reads only participant-facing files
+under `dataset/`, reconstructs evidence state at each request's `audit_at`,
+and writes the required prediction file.
+
+### Run the agent
+
+From the repository root:
+
+```text
+python code/main.py
+```
+
+The command writes `output.csv` at the repository root and validates that it
+has the same number of data rows as `dataset/deletion_requests.csv`.
+
+The final run is deterministic and does not require an API key. Optional
+request-classification fallback credentials are read only from
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`; if neither is set, the deterministic
+classifier is used. Image extraction uses cached local OCR
+(`rapidocr_onnxruntime`). Install the supported dependencies with:
+
+```text
+python -m pip install pdfplumber rapidocr_onnxruntime
+```
+
+### Validate against the public sample
+
+```text
+python code/validate_sample.py
+python code/evaluation/evaluate.py
+python code/diagnostics.py
+```
+
+This compares status and ordered step identities against
+`dataset/sample_output.csv`. The evaluator also supports evidence traces:
+
+```text
+python code/evaluation/evaluate.py --trace case_11
+```
+
+### Submission packaging
+
+Zip the `code/` directory without `dataset/`, virtual environments,
+`__pycache__/`, or generated build artifacts. Submit the resulting archive,
+the generated root `output.csv`, and the root `log.txt` transcript.
+
+The required reports are generated under `code/evaluation/`:
+
+- `evaluation_report.md` — metrics, custom cases, failures, and fixes.
+- `miss_table.md` — per-case missing, extra, and wrong-field sample steps,
+  grouped by parsing, linking, policy, and unrecoverable causes.
+- `usage_report.md` — full-dataset provider/model/call/token/cost accounting.
+
+On Windows, create the archive with:
+
+```powershell
+Compress-Archive -Path README.md,code -DestinationPath code.zip -Force
+```
+
+Before submission, remove generated `.pdf_cache`, `.llm_cache`, and
+`__pycache__` directories from the archive. Never include `dataset/` or a
+nested archive.
