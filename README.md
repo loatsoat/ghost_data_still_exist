@@ -47,6 +47,15 @@ cutoffs at `audit_at`. For wrapper or downstream services, it uses a recognized
 same-row `system` field to select the underlying service grammar; it does not
 infer state from the wrapper service name.
 
+The submitted pipeline is deterministic and offline. It makes no hosted LLM or
+VLM calls, reads no credentials, and uses zero model tokens. It resolves
+identities from current and historical participant data, parses local evidence,
+and applies deletion rules only to records grounded by identifiers and valid
+cutoff timestamps. Known limitations are the 20 authorized cases that remain
+INCOMPLETE without emitted steps: 15 have only non-state `*_started` traces and
+5 have no participant-visible identifier mention. The pipeline does not infer
+evidence for those cases.
+
 
 ## Dataset
 
@@ -145,12 +154,12 @@ zip -r code.zip README.md code -x "*/__pycache__/*" "*/.venv/*" "*/venv/*" "*/no
 **Windows (PowerShell):**
 
 ```powershell
-Compress-Archive -Path README.md, code -DestinationPath code.zip -Force
+Compress-Archive -Path README.md, code, evaluation -DestinationPath code.zip -Force
 ```
 
 When packaging `code.zip`:
 
-- Keep your evaluation reports in `code/evaluation/` so they are bundled automatically with `code` (or add `evaluation` to the archive command above if you placed them in a top-level `evaluation/` directory).
+- Keep the generator reports in `code/evaluation/`; the submission archive also contains the required top-level `evaluation/` copies.
 - Do **not** include `dataset/`, virtual environments (`.venv`, `venv`, `node_modules`), or build caches (`__pycache__`). On Windows, keep `.venv` at the repository root (outside `code/`) and remove any `code/__pycache__` folders before running `Compress-Archive`.
 - Do **not** include nested archives (`.zip`, `.tar`, `.gz`, `.tgz`, `.7z`, `.rar`) inside `code.zip` — submissions containing nested archive files will be rejected.
 

@@ -2,14 +2,10 @@
 Request Classifier - Phase 1 rewrite.
 Intent-first: explicit deletion intent wins unless the WHOLE request is
 clearly about access, correction, export, or marketing opt-out only.
-LLM fallback (cached, temperature 0) for low-confidence cases.
+Deterministic classification with a deletion-safe fallback.
 """
 
 import re
-import json
-import hashlib
-import os
-from pathlib import Path
 
 
 # ── Pure-access / pure-non-deletion phrases ───────────────────────────────
@@ -111,73 +107,6 @@ _EXPLICIT_NON_DEL_RE = [
     for p in NON_DELETION_SOLE_PATTERNS[:3]
 ]
 
-# ── LLM cache ─────────────────────────────────────────────────────────────
-_CACHE_DIR = Path(__file__).parent.parent / ".llm_cache"
-_CACHE_DIR.mkdir(exist_ok=True)
-
-
-def _cache_path(text):
-    h = hashlib.sha256(text.encode('utf-8')).hexdigest()
-    return _CACHE_DIR / f"classify_{h}.json"
-
-
-def _call_llm(text):
-    """Call LLM for ambiguous cases. Returns True/False or None on failure."""
-    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        return None  # No key configured → fallback to True (prefer deletion over zeroing case)
-
-    cp = _cache_path(text)
-    if cp.exists():
-        try:
-            cached = json.loads(cp.read_text(encoding='utf-8'))
-            return cached.get("authorizes_deletion")
-        except Exception:
-            pass
-
-    prompt = (
-        "You are a privacy-request classifier. "
-        "Determine whether the following message authorizes the deletion (erasure) "
-        "of personal data or an account, as defined by GDPR/CCPA-style right-to-erasure requests. "
-        "Requests for access, correction, export, marketing opt-out, or complaint are NOT deletion. "
-        "Reply with ONLY valid JSON: "
-        '{"authorizes_deletion": <true|false>, "language": "<ISO 639-1>", "reason": "<one sentence>"}\n\n'
-        f"Request: {text[:1000]}"
-    )
-
-    result = None
-    # Try OpenAI first
-    if os.environ.get("OPENAI_API_KEY"):
-        try:
-            import urllib.request, json as _json
-            payload = _json.dumps({
-                "model": "gpt-4o-mini",
-                "temperature": 0,
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-            }).encode()
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions",
-                data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = _json.loads(resp.read())
-                content = data["choices"][0]["message"]["content"]
-                parsed = _json.loads(content)
-                result = bool(parsed.get("authorizes_deletion", True))
-                cp.write_text(_json.dumps(parsed), encoding='utf-8')
-        except Exception:
-            result = None
-
-    if result is None:
-        return None  # LLM unavailable → caller decides
-    return result
-
-
 class RequestClassifier:
     def classify(self, request_text):
         """
@@ -185,7 +114,7 @@ class RequestClassifier:
         Strategy (in order):
           1. Strong deletion intent → True immediately.
           2. No deletion intent AND sole non-deletion pattern matches → False.
-          3. LLM fallback (cached). If LLM unavailable → True (safe default).
+          3. Deterministic safe default: True.
         """
         if not request_text:
             return False
@@ -208,10 +137,5 @@ class RequestClassifier:
             if pat.search(text):
                 return False
 
-        # 3. LLM fallback
-        llm_result = _call_llm(text)
-        if llm_result is not None:
-            return llm_result
-
-        # 4. Safe default: treat as deletion so we never silently zero a case
+        # Safe default: treat as deletion so we never silently zero a case
         return True

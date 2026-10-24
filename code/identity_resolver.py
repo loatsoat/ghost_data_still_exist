@@ -82,7 +82,6 @@ class IdentityResolver:
 
         if uid is None:
             # Try partial matching - some emails may have slight variations
-            # e.g., noah.f438085@outlook.com vs noah.f4380@outlook.com
             for known_email, mapped_uid in self.email_to_user.items():
                 if email_lower == known_email:
                     uid = mapped_uid

@@ -127,6 +127,12 @@ class EvidenceIndex:
         return matched
 
 
+# Problem statement cutoff: file capture and record timestamps must both be
+# at or before the request's audit_at.
+CAPTURE_CUTOFF_RULE = 'captured_at <= audit_at'
+RECORD_CUTOFF_RULE = 'record_timestamp <= audit_at'
+
+
 # ── Parser ────────────────────────────────────────────────────────────────
 class EvidenceParser:
     def __init__(self, evidence_dir):

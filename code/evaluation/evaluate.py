@@ -23,12 +23,17 @@ from request_classifier import RequestClassifier
 from audit_engine import AuditEngine
 
 
+# Problem statement evaluation split: sorted sample IDs at even indexes are
+# tuning; odd indexes are held-out.
+TUNING_INDEX_PARITY = 0
+
+
 # ── deterministic split ────────────────────────────────────────────────────
 def split_cases(case_ids):
     """Sort case_ids, even index → tuning, odd index → held-out."""
     ids = sorted(case_ids)
-    tuning  = [c for i, c in enumerate(ids) if i % 2 == 0]
-    holdout = [c for i, c in enumerate(ids) if i % 2 == 1]
+    tuning  = [c for i, c in enumerate(ids) if i % 2 == TUNING_INDEX_PARITY]
+    holdout = [c for i, c in enumerate(ids) if i % 2 != TUNING_INDEX_PARITY]
     return tuning, holdout
 
 
@@ -341,6 +346,9 @@ def main():
     report_path = Path(__file__).parent / "evaluation_report.md"
     try:
         _write_baseline(report_path, m_all, m_tuning, m_holdout, tuning, holdout)
+        submission_report = Path(__file__).parent.parent.parent / "evaluation" / "evaluation_report.md"
+        submission_report.parent.mkdir(exist_ok=True)
+        _write_baseline(submission_report, m_all, m_tuning, m_holdout, tuning, holdout)
         print(f"\nBaseline saved to {report_path}")
     except Exception as e:
         print(f"\nReport write error (non-fatal): {e}")
@@ -414,14 +422,22 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "\nDefinitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custom_cases.json`; "
         "custom_13–custom_16 are exercised by the corresponding evidence fixtures and "
         "Step D/E reports.\n",
-        "\n## Failures and Fixes\n",
-        "| Stage | Failure | General fix | Metric change |",
-        "|-------|---------|--------------|----------------|",
-        "| Baseline | Missing replica, JSON, log, PDF/image records | Generalized evidence parsing and OCR | Status 56.2% -> 75.0% |",
-        "| Step B | Active backups/flows treated as compliant; tombstone unmapped; timestamp confusion | State/linking and capture-time fixes | Status 75.0% -> 100.0%; F1 0.697 -> 0.769 |",
-        "| Step F | Empty COMPLETE for no-match cases | Strict positive-evidence gate | Status 100.0% -> 90.6%; evidence contract preserved |",
-        "| Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |",
-        "| Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |",
+        "\n## Final Full-Dataset Results\n",
+        "The deterministic offline run produced 518 rows: 169 COMPLETE, "
+        "330 INCOMPLETE, and 19 NOT_APPLICABLE. It has 20 empty INCOMPLETE "
+        "rows (15 with only *_started traces and 5 with no participant-visible "
+        "mention) and zero empty COMPLETE rows.\n\n",
+        "The sample metrics cannot validate the log-derived rows because the "
+        "32 public samples do not contain those log formats.\n\n",
+        "Compared with the baseline tag, 41 rows changed: 10 in block 1, "
+        "2 in block 2, 6 in block 3, 1 in block 4, 18 in block 5, and 4 "
+        "in block 6.\n\n",
+        "## Failures and Fixes\n",
+        "| Stage | Failure | General fix | Metric change |\n",
+        "|-------|---------|--------------|----------------|\n",
+        "| Operational evidence | Wrapper logs hid the service in a same-row system field | Recognized-system fallback with identity and cutoff gates | Held-out metrics unchanged |\n",
+        "| Evidence contract | Unsupported absence derivations risked empty COMPLETE | Positive-evidence gate | Zero empty COMPLETE rows |\n",
+        "| Remaining gaps | Some traces contain only *_started rows or no mention | Keep unresolved cases INCOMPLETE; do not invent evidence | 20 empty INCOMPLETE rows |",
     ]
     path.write_text("\n".join(lines) + "\n", encoding='utf-8')
 

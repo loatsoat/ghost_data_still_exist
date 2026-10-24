@@ -17,6 +17,10 @@ the user. Details-text mentions alone (without a user link) are not used.
 
 import re
 from collections import defaultdict
+
+
+# Problem statement cutoff: activity links use event_time <= audit_at.
+ACTIVITY_CUTOFF_RULE = 'event_time <= audit_at'
 from pathlib import Path
 
 

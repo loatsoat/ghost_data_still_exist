@@ -7,6 +7,29 @@ import json
 from pathlib import Path
 
 
+# Problem statement allowed operation/state pairs.
+ALLOWED_OPERATION_STATES = {
+    'REPORT_REMAINING_RECORD': 'PRESENT',
+    'REPORT_EXPOSED_PII': 'PRESENT',
+    'REPORT_ACTIVE_DATA_FLOW': 'ACTIVE',
+    'REPORT_RESTORE_RISK': 'ACTIVE',
+    'DISABLE_DATA_FLOW': 'DISABLED',
+    'BLOCK_RESTORE': 'BLOCKED',
+    'DELETE_RECORD': 'ABSENT',
+    'REDACT_RECORD': 'REDACTED',
+    'ANONYMIZE_RECORD': 'ANONYMIZED',
+    'VERIFY_RECORD_ABSENT': 'ABSENT',
+    'VERIFY_RECORD_PRESENT': 'PRESENT',
+    'VERIFY_RECORD_REDACTED': 'REDACTED',
+    'VERIFY_RECORD_ANONYMIZED': 'ANONYMIZED',
+    'VERIFY_DATA_FLOW_DISABLED': 'DISABLED',
+    'VERIFY_RESTORE_BLOCKED': 'BLOCKED',
+}
+
+# Problem statement phase order.
+PHASE_ORDER = {'FINDING': 0, 'REMEDIATION': 1, 'VERIFICATION': 2}
+
+
 class OutputWriter:
     def write(self, output_path, results):
         """
@@ -52,25 +75,6 @@ class OutputWriter:
         if case_ids != sorted(case_ids):
             return False, "Rows are not sorted by case_id"
 
-        allowed = {
-            'REPORT_REMAINING_RECORD': 'PRESENT',
-            'REPORT_EXPOSED_PII': 'PRESENT',
-            'REPORT_ACTIVE_DATA_FLOW': 'ACTIVE',
-            'REPORT_RESTORE_RISK': 'ACTIVE',
-            'DISABLE_DATA_FLOW': 'DISABLED',
-            'BLOCK_RESTORE': 'BLOCKED',
-            'DELETE_RECORD': 'ABSENT',
-            'REDACT_RECORD': 'REDACTED',
-            'ANONYMIZE_RECORD': 'ANONYMIZED',
-            'VERIFY_RECORD_ABSENT': 'ABSENT',
-            'VERIFY_RECORD_PRESENT': 'PRESENT',
-            'VERIFY_RECORD_REDACTED': 'REDACTED',
-            'VERIFY_RECORD_ANONYMIZED': 'ANONYMIZED',
-            'VERIFY_DATA_FLOW_DISABLED': 'DISABLED',
-            'VERIFY_RESTORE_BLOCKED': 'BLOCKED',
-        }
-        phases = {'FINDING': 0, 'REMEDIATION': 1, 'VERIFICATION': 2}
-
         # Check each row
         for row in rows:
             if row['deletion_status'] not in ('COMPLETE', 'INCOMPLETE', 'NOT_APPLICABLE'):
@@ -93,14 +97,14 @@ class OutputWriter:
                         return False, f"Step numbering mismatch for {row['case_id']}: expected {i}, got {step.get('step_no')}"
                     phase = step.get('phase')
                     operation = step.get('operation')
-                    if phase not in phases:
+                    if phase not in PHASE_ORDER:
                         return False, f"Invalid phase for {row['case_id']}: {phase}"
-                    if phases[phase] < previous_phase:
+                    if PHASE_ORDER[phase] < previous_phase:
                         return False, f"Phase ordering mismatch for {row['case_id']}"
-                    previous_phase = phases[phase]
-                    if operation not in allowed:
+                    previous_phase = PHASE_ORDER[phase]
+                    if operation not in ALLOWED_OPERATION_STATES:
                         return False, f"Invalid operation for {row['case_id']}: {operation}"
-                    if step.get('state') != allowed[operation]:
+                    if step.get('state') != ALLOWED_OPERATION_STATES[operation]:
                         return False, f"Invalid state for {row['case_id']} operation {operation}"
                     if not step.get('system_id') or not step.get('resource_id'):
                         return False, f"Missing system/resource for {row['case_id']}"

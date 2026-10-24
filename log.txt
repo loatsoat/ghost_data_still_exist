@@ -1331,3 +1331,82 @@ branch=main
 repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 parent_agent=none
+## [2026-10-24T23:32:07.629+02:00] Tracing resource provenance read-only
+
+User Prompt (verbatim, secrets redacted):
+Read-only. For `case_433`, `case_434`, and `case_83`, print every source line (file, line number, record timestamp, `captured_at`) from which each step’s `resource_id` was derived, and name the code path (evidence record, activity link, or deletion-rule expansion) that produced each step. Flag any resource that has no participant-visible source. Report the count of changed rows versus the `baseline` tag by block, and the number of the 62 non-ASCII requests classified as deletion. Change nothing.
+
+Agent Response Summary:
+Performed a read-only provenance trace for the requested cases, compared current output with the baseline tag by case block, and counted non-ASCII deletion classifications. No decision logic or source files were changed.
+
+Actions:
+* Traced evidence records and raw log lines for case_433, case_434, and case_83.
+* Compared output.csv with baseline:output.csv and ran the request classifier over non-ASCII requests.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\\Users\\bchau\\Downloads\\hackerrank-orchestrate-october26
+worktree=C:\\Users\\bchau\\Downloads\\hackerrank-orchestrate-october26
+parent_agent=none
+## [2026-10-24T21:37:19.4934101Z] Final cleanup blocked by missing usage report
+
+User Prompt (verbatim, secrets redacted):
+Final cleanup and submission hardening. Don't change decision logic, thresholds, or output semantics unless a step below says so. Follow AGENTS.md and the problem statement's submission rules. Log with tool=GitHub Copilot SDK in VS Code, one entry per prompt with a real, distinct timestamp.
+
+1. Baseline lock. Run main.py and the evaluator and save the metrics, status mix (expect 169/330/19), empty-INCOMPLETE count (expect 20), and a hash of output.csv. Every step below must end with the same output.csv hash unless I say otherwise. If the hash changes, revert that edit.
+2. Hardcoding audit (read-only first). Search code/ for case IDs, resource IDs, file IDs, specific emails or user IDs, and golden labels read from sample_output.csv inside decision logic. Report each hit with file and line. Remove any that affect decisions. Evaluation-only code may read the sample labels, but it must be clearly separated from the pipeline. Confirm the pipeline doesn't read sample_output.csv.
+3. Code cleanup.
+4. Output validation (strict).
+5. Regression checks.
+6. Docs.
+7. Log and package. Make sure git status is clean and commit.
+
+Final report: the baseline and final hash comparison, hardcoding audit hits and fixes, validator pass counts, metrics before and after (should match), archive listing, and the commit hash. If any check fails, say which one and stop.
+
+Agent Response Summary:
+Locked output.csv at SHA256 A3AD99EC7E989FB4D9668DC5945EE79706B5A3678FBB3999ED5B142AE84C796F with the expected 169/330/19 status mix, 20 empty INCOMPLETE rows, and held-out metrics of F1 0.829 and status 14/16. The read-only hardcoding scan found only evaluation-only sample references in data_loader.py and test_classifier.py; no case/resource/file IDs or personal identifiers were found in decision modules. The required usage_report.md is absent from the repository, so the explicit stop-on-failure instruction prevents further cleanup, packaging, or commit.
+
+Actions:
+* Ran main.py and the evaluator; locked the output hash and metrics.
+* Ran a read-only hardcoding search across code/.
+* Checked evaluation report and usage report presence.
+* Stopped before edits, packaging, or commit because usage_report.md is missing.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+## [2026-10-24T23:42:40.877+02:00] Completing submission hardening
+
+User Prompt (verbatim, secrets redacted):
+Resume the cleanup. First, read AGENTS.md and the problem statement’s submission rules, and quote what they require for usage_report.md: file name, location, required fields and format. Then create it with the real figures: hosted LLM/VLM calls (0), tokens (0), the tools and models used in development, and anything else required. Don’t invent figures. Take them from log.txt and the code. If any are unknown, say so and stop.
+
+Then check whether evaluate.py regenerates evaluation_report.md. If it does, put the final numbers in the generator’s template so a re-run doesn’t wipe them.
+
+Then run steps 3 to 7 of the previous cleanup prompt. The output.csv hash must stay A3AD99EC7E989FB4D9668DC5945EE79706B5A3678FBB3999ED5B142AE84C796F. If it changes, revert that edit. Add usage_report.md to the code.zip file list only if the rules say it belongs there. Remove the comment email in identity_resolver.py. Append one log entry with a real, distinct timestamp, then commit.
+
+Agent Response Summary:
+Read AGENTS.md and problem_statement.md, confirmed the required usage report fields and location, and created verified zero-usage accounting for the offline pipeline. Removed the network-capable LLM fallback, the comment email, and a diagnostic script; added cache ignore rules, named validation/cutoff constants, final report generation, and the required top-level evaluation reports for packaging. The output hash stayed unchanged, strict validation and regressions passed, and historical duplicate timestamps/mixed tool names were preserved because the transcript is append-only.
+
+Actions:
+* Created code/evaluation/usage_report.md and evaluation/usage_report.md.
+* Updated evaluate.py, README.md, output_writer.py, request_classifier.py, evidence_parser.py, activity_linker.py, and identity_resolver.py.
+* Removed code/debug_status.py and added .gitignore cache rules.
+* Ran main.py twice from different working directories, evaluator, strict validator, 62 non-ASCII checks, and 15 custom classifier checks.
+* Rebuilt code.zip with README.md, code/, and evaluation/; excluded dataset, caches, virtual environments, and nested archives.
+
+Transcript audit:
+Historical entries contain duplicate timestamps and these tool names: Kiro, Copilot SDK in VS Code, and GitHub Copilot SDK in VS Code. This current entry uses the mandated tool name; older entries were not rewritten under the append-only rule.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\\Users\\bchau\\Downloads\\hackerrank-orchestrate-october26
+worktree=C:\\Users\\bchau\\Downloads\\hackerrank-orchestrate-october26
+parent_agent=none
