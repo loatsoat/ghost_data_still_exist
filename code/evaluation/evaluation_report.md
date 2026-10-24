@@ -76,32 +76,47 @@ Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custo
 | Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |
 | Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |
 
-## Activity-Link Consistency and Option E
+## Dataset-Wide Miss Linkage Audit
 
-The seven public samples whose expected status is COMPLETE and whose generated
-status is also COMPLETE were audited by provenance. Every verification step
-was linked through parsed ledger identifiers in participant-visible evidence:
-`case_03` used email/customer-reference identifiers in `evidence_94`;
-`case_21`, `case_25`, `case_26`, `case_27`, and `case_28` used customer
-references in `evidence_92`; and `case_31` used a customer reference in
-`evidence_51`. None relied on an activity `LINK_RESOURCE_IDENTITY` event.
-Therefore the proposed activity-link-plus-covering-snapshot absence rule has
-no positive tuning example, remains rejected, and changes none of the 57
-no-match rows.
+The current miss table contains 50 missing/extra differences and 39 unique
+missed resource IDs. Each resource was searched across participant files,
+including CSV, JSON, SQL, logs, text, parsed PDF/image evidence, and activity
+rows. Sample output was used only for evaluation.
 
-Option E found that both expected and actual arrays independently use
-consecutive `step_no` values starting at 1. Numbering mismatches are caused by
-missing or extra steps shifting later numbers, not by a different numbering
-rule:
+| Mechanism | Result |
+|-----------|--------|
+| Activity DELETE/ANONYMIZE resource claim | Present for many resources, but activity results are claims and do not establish state or identity. Rejected. |
+| Shared customer reference | Present in some structured records, but the relevant missed snapshots are after the case cutoff. Rejected by the timestamp rule. |
+| Email/hash in the same row | Already covered by the evidence index where pre-cutoff; remaining misses are late evidence or policy differences. No change. |
+| Null-identity resource | Present for analytics records such as `analytics_901` and `analytics_9406`; no user link exists. Rejected. |
+| Numeric suffix only | Collides across unrelated resource types/users in the full dataset. Rejected. |
+| Activity LINK_RESOURCE_IDENTITY | No missed public resource is linked by this event type. No rule applied. |
+| Appears nowhere outside sample output | `account_004`, `audit_record_6645`, `audit_record_5569`. |
 
-| Set | Matched steps | Wrong step_no | Step-number accuracy |
-|-----|--------------:|---------------:|---------------------:|
-| Tuning | 75 | 20 | 0.733 |
-| Held-out | 75 | 26 | 0.653 |
-| All | 150 | 46 | 0.693 |
+The remaining 36 unique resources have exact participant-visible occurrences,
+but each occurrence is either an ungrounded claim, a null-identity record, a
+late snapshot, or an already-supported parsed record whose expected operation
+differs by policy. No collision-free linking mechanism with three or more
+usable cases was found.
 
-The existing general rule—canonical phase/operation/system/resource ordering
-followed by consecutive renumbering—already satisfies the output contract.
-No alternative numbering rule can repair absent or extra steps without
-case-specific information. Option E was not merged; all P/R/F1/status metrics
-remained unchanged.
+### Blind absence test
+
+For `case_01`, `case_02`, and `case_04`, the expected account resources occur
+in pre-cutoff DELETE_RECORD claims, but none has a pre-cutoff
+LINK_RESOURCE_IDENTITY event tying it to the requester. The cited failover
+snapshot contains other users' rows but not the expected resources. For
+`case_04`, `analytics_901` is present in `evidence_56` with all identity fields
+null. The blind absence rule therefore cannot establish user-specific absence
+and was not applied.
+
+### Rule results
+
+No candidate rule passed both the evidence/collision tests and the held-out
+requirements, so no decision logic changed:
+
+| Stage | Tuning P/R/F1 | Tuning status | Held-out P/R/F1 | Held-out status | Full status mix |
+|-------|---------------|---------------|----------------|----------------|-----------------|
+| Before | 0.987/0.806/0.888 | 15/16 | 0.926/0.750/0.829 | 14/16 | 159/340/19 |
+| After | 0.987/0.806/0.888 | 15/16 | 0.926/0.750/0.829 | 14/16 | 159/340/19 |
+
+The 62 non-ASCII requests and 15 custom classifier cases remain passing.
