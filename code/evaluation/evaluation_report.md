@@ -76,47 +76,42 @@ Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custo
 | Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |
 | Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |
 
-## Dataset-Wide Miss Linkage Audit
+## Evidence Cutoff and Activity-Only Audit
 
-The current miss table contains 50 missing/extra differences and 39 unique
-missed resource IDs. Each resource was searched across participant files,
-including CSV, JSON, SQL, logs, text, parsed PDF/image evidence, and activity
-rows. Sample output was used only for evaluation.
+Every expected sample step with a non-empty `evidence_id` was checked against
+the manifest `captured_at` or activity `event_time` and the case `audit_at`.
+No non-empty expected evidence ID was post-cutoff:
 
-| Mechanism | Result |
-|-----------|--------|
-| Activity DELETE/ANONYMIZE resource claim | Present for many resources, but activity results are claims and do not establish state or identity. Rejected. |
-| Shared customer reference | Present in some structured records, but the relevant missed snapshots are after the case cutoff. Rejected by the timestamp rule. |
-| Email/hash in the same row | Already covered by the evidence index where pre-cutoff; remaining misses are late evidence or policy differences. No change. |
-| Null-identity resource | Present for analytics records such as `analytics_901` and `analytics_9406`; no user link exists. Rejected. |
-| Numeric suffix only | Collides across unrelated resource types/users in the full dataset. Rejected. |
-| Activity LINK_RESOURCE_IDENTITY | No missed public resource is linked by this event type. No rule applied. |
-| Appears nowhere outside sample output | `account_004`, `audit_record_6645`, `audit_record_5569`. |
+| Sample result | Pre-cutoff file evidence | Post-cutoff evidence |
+|---------------|-------------------------:|----------------------:|
+| Passing cases | 10 | 0 |
+| Failing cases | 65 | 0 |
 
-The remaining 36 unique resources have exact participant-visible occurrences,
-but each occurrence is either an ungrounded claim, a null-identity record, a
-late snapshot, or an already-supported parsed record whose expected operation
-differs by policy. No collision-free linking mechanism with three or more
-usable cases was found.
+Expected remediation and future-verification steps with `evidence_id=""` were
+excluded because they are intentionally evidence-free under the output
+contract. Since no passing case cites post-cutoff evidence, there is no
+alternative grader cutoff rule to adopt; file capture time remains the
+applicable cutoff, with record timestamps as an additional safeguard.
 
-### Blind absence test
+The activity-only miss set was derived dynamically from missed resources with
+no parsed evidence record. It contained 17 resources; 14 had DELETE_RECORD
+rows and none had ANONYMIZE_RECORD rows. Their complete fields were
+`activity_id`, `event_time`, `event_type`, `source_system`, `target_system`,
+`resource_id`, `reported_result`, and `details`. No row carried a user ID,
+email, phone, email hash, customer reference, case ID, or request ID. The
+details were operational claims such as worker submission and SUCCESS,
+PARTIAL, or FAILED results.
 
-For `case_01`, `case_02`, and `case_04`, the expected account resources occur
-in pre-cutoff DELETE_RECORD claims, but none has a pre-cutoff
-LINK_RESOURCE_IDENTITY event tying it to the requester. The cited failover
-snapshot contains other users' rows but not the expected resources. For
-`case_04`, `analytics_901` is present in `evidence_56` with all identity fields
-null. The blind absence rule therefore cannot establish user-specific absence
-and was not applied.
+No activity-only row contains a requester identifier, so no pre-cutoff
+activity-link rule could be tested as a valid user link or pass a collision
+check. No activity rule was implemented.
 
-### Rule results
+| Rule | Tuning delta | Held-out delta | Decision |
+|------|--------------|----------------|----------|
+| Activity row identifier link | 0.000 P/R/F1, 0 status cases | 0.000 P/R/F1, 0 status cases | Rejected: no identifier field |
+| Record-timestamp relaxation | Not tested | Not tested | Rejected: no passing post-cutoff example |
+| Existing evidence capture cutoff | Baseline | Baseline | Kept |
 
-No candidate rule passed both the evidence/collision tests and the held-out
-requirements, so no decision logic changed:
-
-| Stage | Tuning P/R/F1 | Tuning status | Held-out P/R/F1 | Held-out status | Full status mix |
-|-------|---------------|---------------|----------------|----------------|-----------------|
-| Before | 0.987/0.806/0.888 | 15/16 | 0.926/0.750/0.829 | 14/16 | 159/340/19 |
-| After | 0.987/0.806/0.888 | 15/16 | 0.926/0.750/0.829 | 14/16 | 159/340/19 |
-
-The 62 non-ASCII requests and 15 custom classifier cases remain passing.
+After regeneration, the full status mix remains 159 COMPLETE, 340
+INCOMPLETE, and 19 NOT_APPLICABLE. The 62 non-ASCII requests and 15 custom
+classifier cases remain passing.
