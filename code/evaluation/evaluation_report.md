@@ -75,3 +75,58 @@ Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custo
 | Step F | Empty COMPLETE for no-match cases | Strict positive-evidence gate | Status 100.0% -> 90.6%; evidence contract preserved |
 | Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |
 | Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |
+
+## Option Tournament
+
+The current implementation was captured as the `baseline` tag before testing the
+options. Each option was evaluated from that baseline on the fixed tuning split,
+with the held-out split used only for qualification.
+
+| Option | Tuning score | Held-out score | Constraint result | Decision |
+|--------|--------------|----------------|-------------------|----------|
+| Baseline | 0.913 | 0.852 | Fails zero-empty-INCOMPLETE constraint: 57 | Retained |
+| A: absence rule | 0.913 | 0.852 | Not derivable; no user-grounded resource and fails zero-empty-INCOMPLETE | Dropped |
+| B: coverage | 0.913 | 0.852 | No evidence-safe generic parser/linking fix; fails zero-empty-INCOMPLETE | Dropped |
+| C: ordering | 0.913 | 0.852 | No ordering-only multiset matches; fails zero-empty-INCOMPLETE | Dropped |
+
+Scores are `0.5 * F1 + 0.5 * status_accuracy`. Baseline tuning is
+`0.5 * 0.888 + 0.5 * 0.938 = 0.913`; held-out is
+`0.5 * 0.829 + 0.5 * 0.875 = 0.852`.
+
+### Option A investigation
+
+The three public cases whose expected output contains only unsupported absence
+verification are selected dynamically as expected COMPLETE cases with no
+matched record. Their expected evidence is `evidence_54` for the account
+resource, and `evidence_56` for the analytics resource in the applicable case.
+The failover snapshot is captured before the relevant audit cutoff and does
+contain the account table, but the absent resource IDs are not present in the
+snapshot and are not connected to the requester by a user ID, email, phone, or
+hash. The analytics record has a null identity. The only resource grounding is
+an activity claim, which is not absence proof. The proposed rule was therefore
+not derivable from participant-visible evidence and was not implemented.
+
+### Option B investigation
+
+The data-derived miss table reported 38 parsing-or-linking differences and 12
+rule differences. The largest group includes resource IDs appearing in
+activity claims or unsupported sample expectations without a grounded
+requester link; converting those claims into evidence-backed records would
+violate the evidence rules. No parser change was retained.
+
+### Option C investigation
+
+No public sample had an identity-step multiset that matched exactly while only
+the order differed. Consequently, no alternative ordering rule could be
+validated on tuning without guessing from mismatched or unsupported steps.
+
+## Final Tournament Housekeeping
+
+- Full output: 518 rows, sorted by `case_id`.
+- Status mix: 159 COMPLETE, 340 INCOMPLETE, 19 NOT_APPLICABLE.
+- Empty COMPLETE rows: 0.
+- Empty INCOMPLETE rows: 57.
+- Recomputed no-match population: 57 authorized deletion requests with no
+  matched evidence record or grounded activity finding.
+- The positive-evidence gate remains enabled.
+- No option was merged because none satisfied all hard constraints.
