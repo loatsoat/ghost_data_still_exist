@@ -76,57 +76,32 @@ Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custo
 | Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |
 | Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |
 
-## Option Tournament
+## Activity-Link Consistency and Option E
 
-The current implementation was captured as the `baseline` tag before testing the
-options. Each option was evaluated from that baseline on the fixed tuning split,
-with the held-out split used only for qualification.
+The seven public samples whose expected status is COMPLETE and whose generated
+status is also COMPLETE were audited by provenance. Every verification step
+was linked through parsed ledger identifiers in participant-visible evidence:
+`case_03` used email/customer-reference identifiers in `evidence_94`;
+`case_21`, `case_25`, `case_26`, `case_27`, and `case_28` used customer
+references in `evidence_92`; and `case_31` used a customer reference in
+`evidence_51`. None relied on an activity `LINK_RESOURCE_IDENTITY` event.
+Therefore the proposed activity-link-plus-covering-snapshot absence rule has
+no positive tuning example, remains rejected, and changes none of the 57
+no-match rows.
 
-| Option | Tuning score | Held-out score | Constraint result | Decision |
-|--------|--------------|----------------|-------------------|----------|
-| Baseline | 0.913 | 0.852 | Fails zero-empty-INCOMPLETE constraint: 57 | Retained |
-| A: absence rule | 0.913 | 0.852 | Not derivable; no user-grounded resource and fails zero-empty-INCOMPLETE | Dropped |
-| B: coverage | 0.913 | 0.852 | No evidence-safe generic parser/linking fix; fails zero-empty-INCOMPLETE | Dropped |
-| C: ordering | 0.913 | 0.852 | No ordering-only multiset matches; fails zero-empty-INCOMPLETE | Dropped |
+Option E found that both expected and actual arrays independently use
+consecutive `step_no` values starting at 1. Numbering mismatches are caused by
+missing or extra steps shifting later numbers, not by a different numbering
+rule:
 
-Scores are `0.5 * F1 + 0.5 * status_accuracy`. Baseline tuning is
-`0.5 * 0.888 + 0.5 * 0.938 = 0.913`; held-out is
-`0.5 * 0.829 + 0.5 * 0.875 = 0.852`.
+| Set | Matched steps | Wrong step_no | Step-number accuracy |
+|-----|--------------:|---------------:|---------------------:|
+| Tuning | 75 | 20 | 0.733 |
+| Held-out | 75 | 26 | 0.653 |
+| All | 150 | 46 | 0.693 |
 
-### Option A investigation
-
-The three public cases whose expected output contains only unsupported absence
-verification are selected dynamically as expected COMPLETE cases with no
-matched record. Their expected evidence is `evidence_54` for the account
-resource, and `evidence_56` for the analytics resource in the applicable case.
-The failover snapshot is captured before the relevant audit cutoff and does
-contain the account table, but the absent resource IDs are not present in the
-snapshot and are not connected to the requester by a user ID, email, phone, or
-hash. The analytics record has a null identity. The only resource grounding is
-an activity claim, which is not absence proof. The proposed rule was therefore
-not derivable from participant-visible evidence and was not implemented.
-
-### Option B investigation
-
-The data-derived miss table reported 38 parsing-or-linking differences and 12
-rule differences. The largest group includes resource IDs appearing in
-activity claims or unsupported sample expectations without a grounded
-requester link; converting those claims into evidence-backed records would
-violate the evidence rules. No parser change was retained.
-
-### Option C investigation
-
-No public sample had an identity-step multiset that matched exactly while only
-the order differed. Consequently, no alternative ordering rule could be
-validated on tuning without guessing from mismatched or unsupported steps.
-
-## Final Tournament Housekeeping
-
-- Full output: 518 rows, sorted by `case_id`.
-- Status mix: 159 COMPLETE, 340 INCOMPLETE, 19 NOT_APPLICABLE.
-- Empty COMPLETE rows: 0.
-- Empty INCOMPLETE rows: 57.
-- Recomputed no-match population: 57 authorized deletion requests with no
-  matched evidence record or grounded activity finding.
-- The positive-evidence gate remains enabled.
-- No option was merged because none satisfied all hard constraints.
+The existing general rule—canonical phase/operation/system/resource ordering
+followed by consecutive renumbering—already satisfies the output contract.
+No alternative numbering rule can repair absent or extra steps without
+case-specific information. Option E was not merged; all P/R/F1/status metrics
+remained unchanged.
