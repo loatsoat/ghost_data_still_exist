@@ -39,6 +39,12 @@ python3 code/main.py
 
 The blank template at `dataset/output.csv` is provided as a reference. Your final generated file for submission must be the root-level `output.csv`.
 
+The evidence parser also handles direct key/value, pipe-delimited, syslog, and
+nested cloud-runtime logs. It accepts a log record only when a same-row
+`resource_id` is paired with a resolved user identifier (current or historical
+email, phone, hash, or user ID), and applies both file-capture and record-time
+cutoffs at `audit_at`.
+
 
 ## Dataset
 

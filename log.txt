@@ -1144,3 +1144,126 @@ branch=main
 repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 parent_agent=none
+## [2026-10-24T23:08:44.077+02:00] Auditing authorized no-match evidence coverage
+
+User Prompt (verbatim, secrets redacted):
+<current_datetime>2026-10-24T23:08:44.077+02:00</current_datetime>
+
+No hardcoding. Keep evidence rules. For each of the 57 authorized no-match rows, report identity resolution, identifier mentions and cutoff/state, pre-cutoff snapshot coverage, group counts, and comparison with the other 461 rows. Change nothing in decision logic.
+
+Agent Response Summary:
+Started a read-only audit of the 57 authorized no-match requests and the comparable 461 rows. No decision logic or output changes will be made.
+
+Actions:
+* Appended this turn to log.txt
+* Will compute identity, evidence mention, snapshot coverage, and status groups
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+## [2026-10-27T00:00:00Z] Auditing 57 authorized no-match evidence coverage
+
+User Prompt (verbatim, secrets redacted):
+Follow-up. No hardcoding. Report before/after tuning and held-out metrics; revert anything that does not improve held-out.
+
+1. For each of the 57 authorized no-match rows, report: (1) whether identity resolved; (2) whether any participant file, at any capture time, mentions any resolved identifier (user_id, current and historical emails, phones, hashes, customer reference), and if so whether it is pre- or post-audit_at and whether the record shows PRESENT or ABSENT; (3) whether a pre-cutoff snapshot covers the relevant system. Tabulate the groups: no mention anywhere, post-cutoff mention only, pre-cutoff snapshot with no row. Change nothing in decision logic. Then compare the group sizes against the status mix of the other 461 rows (what share of comparable cases with a snapshot and no row are COMPLETE?)
+
+Agent Response Summary:
+Corrected the diagnostic to exclude identity/request metadata from evidence-mention counts and searched parsed evidence records, activity rows, and pre-cutoff SQL snapshots. All 57 authorized no-match identities resolved; 54 had no mention in actual evidence, 2 had pre-cutoff operational mentions, and 1 had only a post-cutoff evidence mention. No decision logic changed.
+
+Actions:
+* Ran a read-only no-match evidence coverage audit.
+* Compared the same pre-cutoff snapshot/no-identifier-row criterion across the broader authorized population.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+
+## [2026-10-24T23:11:49.5163684+02:00] Correcting no-match audit timestamp
+
+Agent Response Summary:
+The diagnostic remains read-only. The earlier audit entry used a placeholder date; this correction records the actual append time without rewriting the append-only transcript.
+
+Actions:
+* Verified corrected no-match groups and comparable status counts.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+
+## [2026-10-24T23:13:56.359+02:00] Auditing representative no-match block families
+
+User Prompt (verbatim, secrets redacted):
+1. For one case from each of the five no-match blocks (first case of each block), print: the full request row, the full identity row and audit-log rows, every file or activity row mentioning any of the user’s identifiers (including post-cutoff), and the user’s email domain and name. Do the same for `case_01`, `case_02`, and `case_04` from the public samples.
+2. Compare the blocks to each other and to the three samples. What do the requests have in common (text, email domain, identity shape, audit_at date, resource-ID patterns such as `account_NNN`)? What differs between blocks?
+3. Check the files the parser skips or only partly reads (raw SQL tables, JSON containers, logs, PDFs, images) for rows keyed on something that identity resolution doesn’t use, such as a numeric suffix of the user ID, a customer reference format, or a name in a different field.
+4. Propose, but don’t implement, a general rule per block family, stating which evidence supports it. Then report which rules would be safe under the evidence-ID and cutoff rules.
+
+Agent Response Summary:
+Performed a read-only audit of representative cases `case_83`, `case_168`, `case_263`, `case_413`, `case_513`, and public samples `case_01`, `case_02`, `case_04`. Printed request and identity records, checked audit/activity/evidence mentions including post-cutoff content, compared block shapes, and inspected raw evidence formats for alternate keys. No production decision logic changed.
+
+Actions:
+* Ran selected-row and evidence-key diagnostics.
+* Removed temporary diagnostic files after inspection.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+## [2026-10-24T23:17:08.377+02:00] Implementing generic operational-log parser
+
+User Prompt (verbatim, secrets redacted):
+Implement a generic operational-log parser, no hardcoding of case IDs, resource IDs, or file IDs. Keep evidence rules and the cutoff (file `captured_at <= audit_at` and record timestamp `<= audit_at`). Revert anything that lowers held-out precision, recall, F1, or status accuracy.
+
+1. Add parsing for same-row links in the log grammars seen in evidence_08, 25, 39, 48, 85 (key=value, syslog, pipe-delimited, cloud-runtime). A row becomes an evidence record only if it contains `resource_id` and an identifier from the same row (`subject_reference`, `subject_ref`, `lookup_key`, `owner_key`, `owner_email`, `match_key`, `matched_value`, `correlation_key`, `scan_key`, `subject_key`). Match identifiers against the resolved user_id, current and historical emails, phones, and hashes only.
+2. Define state from explicit signals only: `NOT_FOUND` or `rows=0` ? ABSENT; `FOUND`, `rows>=1` with `http_status=200`, `available=true` ? PRESENT. Treat `*_started` rows as non-state and ignore them. Treat PII-scan warning rows as PRESENT only if the record type maps to an existing finding operation in the output spec. Print the mapping you chose.
+3. Run a collision check across all 518 cases: report any resource linked to more than one user. Drop any rule that produces collisions.
+4. Report before/after tuning and held-out precision, recall, F1, status accuracy, plus the full-output status mix, the new empty-INCOMPLETE count, and the change count by block. Print 3 sample rows of new output for review.
+5. Re-run the 62 non-ASCII requests and 15 custom cases, regenerate `output.csv`, run the strict validator (no post-cutoff evidence IDs), rebuild a clean `code.zip`, and commit with a real timestamp in `log.txt`.
+
+Agent Response Summary:
+Implemented a generic operational-log normalization path for direct key/value, pipe-delimited, syslog, and nested cloud-runtime records. Same-row resource links now require one of the permitted identity-bearing fields and are matched only against resolved user IDs, current/historical emails, phones, or hashes; explicit state mappings and cutoff enforcement remain active. The full 518-case collision check found zero collisions, held-out metrics did not change, and the improved parser reduced unsupported empty INCOMPLETE outputs.
+
+Actions:
+* Edited code/evidence_parser.py, README.md, and code/evaluation/evaluation_report.md.
+* Regenerated output.csv and ran the evaluator, strict evidence/cutoff checks, classifier tests, and non-ASCII audit.
+* Rebuilt code.zip without dataset, caches, or nested archives.
+* Committed the implementation and refreshed artifacts.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none
+## [2026-10-24T23:17:08.377+02:00] Transcript encoding correction
+
+Agent Response Summary:
+The preceding turn was appended with the Windows default text writer, which rendered the two arrow glyphs in the verbatim prompt as question marks. This append-only correction records the exact symbols requested by the user without rewriting prior transcript entries.
+
+Exact prompt fragments:
+`NOT_FOUND` or `rows=0` â†’ ABSENT; `FOUND`, `rows>=1` with `http_status=200`, `available=true` â†’ PRESENT.
+
+Context:
+tool=GitHub Copilot SDK in VS Code
+model=Auto
+branch=main
+repo_root=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=C:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+parent_agent=none

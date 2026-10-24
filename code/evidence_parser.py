@@ -680,7 +680,12 @@ class EvidenceParser:
 
     # ── Log ───────────────────────────────────────────────────────────────
     _KV_RE = re.compile(r'(\w+)=(?:"([^"]*)"|(\S+))')
-    _TS_RE = re.compile(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)')
+    _TS_RE = re.compile(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)')
+    _LOG_ID_KEYS = (
+        'subject_reference', 'subject_ref', 'lookup_key', 'owner_key',
+        'owner_email', 'match_key', 'matched_value', 'correlation_key',
+        'scan_key', 'subject_key',
+    )
 
     def _parse_log_file(self, filepath, file_id, captured_at, index):
         try:
@@ -691,18 +696,7 @@ class EvidenceParser:
         lines = content.split('\n')
         trace_identifiers = {}
         for line in lines:
-            kv = {
-                m.group(1): m.group(2) if m.group(2) is not None else m.group(3)
-                for m in self._KV_RE.finditer(line)
-            }
-            json_start = line.find('{')
-            if json_start >= 0:
-                try:
-                    structured = json.loads(line[json_start:])
-                    if isinstance(structured, dict):
-                        kv.update(structured)
-                except (TypeError, ValueError):
-                    pass
+            kv = self._log_fields(line)
             trace_id = kv.get('trace_id')
             identifier = (
                 kv.get('lookup_key') or kv.get('subject_key') or
@@ -715,24 +709,16 @@ class EvidenceParser:
         for line in lines:
             if not line.strip():
                 continue
-            ts_m = self._TS_RE.match(line)
+            ts_m = self._TS_RE.search(line)
             if not ts_m:
                 continue
             event_time = ts_m.group(1)
 
-            kv = {}
-            for m in self._KV_RE.finditer(line):
-                kv[m.group(1)] = m.group(2) if m.group(2) is not None else m.group(3)
-            json_start = line.find('{')
-            if json_start >= 0:
-                try:
-                    structured = json.loads(line[json_start:])
-                    if isinstance(structured, dict):
-                        kv.update(structured)
-                except (TypeError, ValueError):
-                    pass
+            kv = self._log_fields(line)
             if not any(k in kv for k in ('lookup_key', 'subject_key', 'owner_key',
-                                         'matched_value', 'correlation_key')):
+                                         'matched_value', 'correlation_key',
+                                         'subject_reference', 'subject_ref',
+                                         'owner_email', 'match_key', 'scan_key')):
                 inherited = trace_identifiers.get(kv.get('trace_id'))
                 if inherited:
                     kv['lookup_key'] = inherited
@@ -745,10 +731,145 @@ class EvidenceParser:
             if not resource_id:
                 continue
 
+            generic = self._parse_generic_log_record(
+                service, kv, resource_id, file_id, captured_at, event_time
+            )
+            if generic is not None:
+                index.add_record(generic)
+                continue
+
             rec = self._log_line_to_record(service, event, kv, resource_id,
                                            file_id, captured_at, event_time)
             if rec:
                 index.add_record(rec)
+
+    def _log_fields(self, line):
+        """Normalize direct, nested-message, JSON, syslog, and pipe log fields."""
+        kv = {
+            m.group(1): m.group(2) if m.group(2) is not None else m.group(3)
+            for m in self._KV_RE.finditer(line)
+        }
+        message_match = re.search(r'message="((?:\\.|[^"])*)"', line)
+        message = (
+            message_match.group(1).replace(r'\"', '"')
+            if message_match else kv.get('message')
+        )
+        if message:
+            nested = {}
+            nested_re = re.compile(r'(\w+)=(?:"((?:\\.|[^"])*)"|(\S+))')
+            for match in nested_re.finditer(message):
+                value = match.group(2) if match.group(2) is not None else match.group(3)
+                nested[match.group(1)] = value.replace(r'\"', '"')
+            kv.update(nested)
+        json_start = line.find('{')
+        if json_start >= 0:
+            try:
+                structured = json.loads(line[json_start:])
+                if isinstance(structured, dict):
+                    kv.update(structured)
+            except (TypeError, ValueError):
+                pass
+        if 'service' not in kv:
+            service_match = re.search(
+                r'\b(account_service|search_service|search_index_service|'
+                r'analytics_platform|support_platform|export_service|'
+                r'security_service|integration_service|backup_service)\b',
+                line,
+            )
+            if service_match:
+                kv['service'] = service_match.group(1)
+        if kv.get('service') == 'search_index_service':
+            kv['service'] = kv.get('system', 'search_index_service')
+        return kv
+
+    def _parse_generic_log_record(self, service, kv, resource_id,
+                                  file_id, captured_at, event_time):
+        """Parse only same-row links with an explicit, supported state signal."""
+        link_values = [
+            self._clean(kv.get(key)) for key in self._LOG_ID_KEYS
+            if self._clean(kv.get(key))
+        ]
+        if not link_values:
+            return None
+
+        event = str(kv.get('event', '')).lower()
+        if event.endswith('_started') or event in {
+            'profile_lookup_started', 'index_query_started',
+            'audit_record_query_started', 'message_scan_started',
+            'attachment_scan_started', 'analytics_profile_scan_started',
+        }:
+            return None
+
+        state = None
+        explicit = ' '.join(
+            str(kv.get(key, '')).lower()
+            for key in ('result', 'reported_result', 'status', 'state', 'rows',
+                        'http_status', 'available')
+        )
+        if re.search(r'\bnot_found\b|\bnot found\b', explicit):
+            state = 'ABSENT'
+        elif str(kv.get('rows', '')).strip() == '0':
+            state = 'ABSENT'
+        elif re.search(r'\bfound\b|\bhit\b', explicit):
+            state = 'PRESENT'
+        elif str(kv.get('rows', '')).strip().isdigit():
+            rows = int(str(kv.get('rows')).strip())
+            if rows >= 1 and str(kv.get('http_status', '')).strip() == '200':
+                state = 'PRESENT'
+        elif str(kv.get('available', '')).lower() == 'true':
+            state = 'PRESENT'
+
+        pii_warning = (
+            ('pii_scan' in event or 'identity_scan' in event)
+            and str(kv.get('level', '')).upper() in {'WARN', 'WARNING'}
+        )
+        if pii_warning:
+            state = 'PRESENT'
+        if state is None:
+            return None
+
+        identifiers = {
+            'email': None,
+            'phone': None,
+            'email_hash': None,
+            'customer_reference': None,
+        }
+        for value in link_values:
+            if '@' in value:
+                identifiers['email'] = value
+            elif re.fullmatch(r'user_[A-Za-z0-9_-]+', value):
+                identifiers['customer_reference'] = value
+            elif re.fullmatch(r'[0-9a-fA-F]{40,}', value):
+                identifiers['email_hash'] = value
+            elif re.search(r'\d', value) and (
+                value.startswith('+') or re.fullmatch(r'[\d ()-]+', value)
+            ):
+                identifiers['phone'] = value
+
+        if not any(identifiers.values()):
+            return None
+
+        service_map = {
+            'account_service': ('account_service', 'customer_profile'),
+            'search_service': ('search_service', 'search_document'),
+            'analytics_platform': ('analytics_platform', 'analytics_profile'),
+            'support_platform': ('support_platform', 'support_record'),
+            'security_service': ('security_service', 'security_audit'),
+            'export_service': ('export_service', 'user_export'),
+        }
+        system_id, record_type = service_map.get(service, (None, None))
+        if not system_id:
+            return None
+        if pii_warning and record_type not in {
+            'analytics_profile', 'support_record'
+        }:
+            return None
+
+        return self._make(
+            file_id, captured_at, system_id, resource_id, record_type, state,
+            identifiers, raw=kv, record_timestamp=event_time,
+            source_format='log',
+        )
 
     def _log_line_to_record(self, service, event, kv, resource_id,
                              file_id, captured_at, event_time):

@@ -76,42 +76,46 @@ Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custo
 | Step G | Snapshot omission rule could convert activity claims into identity links | Rejected unsupported derivation | No metric change |
 | Step H | OCR connector state yielded empty COMPLETE | General connector state extraction and validator hardening | Empty COMPLETE count 1 -> 0 |
 
-## Evidence Cutoff and Activity-Only Audit
+## Generic Operational-Log Parser
 
-Every expected sample step with a non-empty `evidence_id` was checked against
-the manifest `captured_at` or activity `event_time` and the case `audit_at`.
-No non-empty expected evidence ID was post-cutoff:
+The operational-log parser was extended without case, resource, or file-specific
+rules. It normalizes direct key/value, pipe-delimited, syslog, and nested
+cloud-runtime messages. A log row is eligible only when the same row contains
+`resource_id` and one of `subject_reference`, `subject_ref`, `lookup_key`,
+`owner_key`, `owner_email`, `match_key`, `matched_value`, `correlation_key`,
+`scan_key`, or `subject_key`. Values are matched only against resolved user
+IDs, current or historical emails, phones, and email hashes.
 
-| Sample result | Pre-cutoff file evidence | Post-cutoff evidence |
-|---------------|-------------------------:|----------------------:|
-| Passing cases | 10 | 0 |
-| Failing cases | 65 | 0 |
+State mapping is explicit:
 
-Expected remediation and future-verification steps with `evidence_id=""` were
-excluded because they are intentionally evidence-free under the output
-contract. Since no passing case cites post-cutoff evidence, there is no
-alternative grader cutoff rule to adopt; file capture time remains the
-applicable cutoff, with record timestamps as an additional safeguard.
+- `NOT_FOUND` or `rows=0` -> `ABSENT`
+- `FOUND` or `hit` -> `PRESENT`
+- `rows>=1` with `http_status=200` -> `PRESENT`
+- `available=true` -> `PRESENT`
+- PII-scan warnings -> `PRESENT` only for analytics and support record types
+- `*_started` rows are ignored as non-state
 
-The activity-only miss set was derived dynamically from missed resources with
-no parsed evidence record. It contained 17 resources; 14 had DELETE_RECORD
-rows and none had ANONYMIZE_RECORD rows. Their complete fields were
-`activity_id`, `event_time`, `event_type`, `source_system`, `target_system`,
-`resource_id`, `reported_result`, and `details`. No row carried a user ID,
-email, phone, email hash, customer reference, case ID, or request ID. The
-details were operational claims such as worker submission and SUCCESS,
-PARTIAL, or FAILED results.
+The parser enforces both file `captured_at <= audit_at` and record timestamp
+`<= audit_at` through the existing evidence matcher. A full 518-case collision
+check found zero resources linked to more than one resolved user.
 
-No activity-only row contains a requester identifier, so no pre-cutoff
-activity-link rule could be tested as a valid user link or pass a collision
-check. No activity rule was implemented.
+| Metric | Baseline | Operational-log parser | Delta |
+|---|---:|---:|---:|
+| Tuning precision | 0.987 | 0.987 | 0.000 |
+| Tuning recall | 0.806 | 0.806 | 0.000 |
+| Tuning F1 | 0.888 | 0.888 | 0.000 |
+| Tuning status accuracy | 0.938 | 0.938 | 0.000 |
+| Held-out precision | 0.926 | 0.926 | 0.000 |
+| Held-out recall | 0.750 | 0.750 | 0.000 |
+| Held-out F1 | 0.829 | 0.829 | 0.000 |
+| Held-out status accuracy | 0.875 | 0.875 | 0.000 |
 
-| Rule | Tuning delta | Held-out delta | Decision |
-|------|--------------|----------------|----------|
-| Activity row identifier link | 0.000 P/R/F1, 0 status cases | 0.000 P/R/F1, 0 status cases | Rejected: no identifier field |
-| Record-timestamp relaxation | Not tested | Not tested | Rejected: no passing post-cutoff example |
-| Existing evidence capture cutoff | Baseline | Baseline | Kept |
+The full output changed from `159/340/19` COMPLETE/INCOMPLETE/NOT_APPLICABLE
+to `167/332/19`. Empty INCOMPLETE rows decreased from 57 to 30; empty COMPLETE
+rows remained zero. Thirty-one rows changed relative to the tagged baseline:
+10 in the `case_83` block, 1 in the `case_168` block, 5 in the `case_263`
+block, 7 in the `case_413` block, and 4 in the `case_513` block.
 
-After regeneration, the full status mix remains 159 COMPLETE, 340
-INCOMPLETE, and 19 NOT_APPLICABLE. The 62 non-ASCII requests and 15 custom
-classifier cases remain passing.
+The strict output check found 518 rows, valid JSON and step numbering, zero
+post-cutoff or missing evidence IDs, and zero empty COMPLETE rows. The 62
+non-ASCII requests and all 15 custom classifier cases still pass.
