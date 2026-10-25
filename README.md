@@ -111,7 +111,9 @@ python3 code/evaluation/test_classifier.py
 
 Both commands need the `dataset/` folder beside this README. The evaluator
 uses `sample_deletion_requests.csv` and `sample_output.csv`; it does not
-replace the full-dataset `output.csv`.
+replace the full-dataset `output.csv`. It preserves the final top-level
+evaluation report by default. The 16 custom classifier cases are defined in
+`code/evaluation/custom_cases/custom_cases.json`.
 
 ## Offline and deterministic operation
 

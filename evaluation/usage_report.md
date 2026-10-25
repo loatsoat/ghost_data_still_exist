@@ -3,7 +3,8 @@
 ## Final full-dataset run
 
 The 518-request `output.csv` was produced by the deterministic local Python
-pipeline. The program uses no hosted model or network service.
+pipeline. The pipeline is deterministic and offline, and uses no hosted model
+or network service.
 
 | Provider | Model | Calls | Input tokens | Output tokens | Total tokens | Estimated cost |
 |---|---|---:|---:|---:|---:|---:|

@@ -103,5 +103,12 @@
     "request_text": "Please send me a copy of last year's invoices. Leave my profile and purchase history unchanged.",
     "expected_authorizes_deletion": false,
     "notes": "Record-copy request only."
+  },
+  {
+    "id": "custom_16",
+    "type": "deletion_with_legal_retention",
+    "request_text": "Please delete my account and personal data, but retain any records that the law requires you to keep.",
+    "expected_authorizes_deletion": true,
+    "notes": "Explicit deletion request while acknowledging policy-required retention."
   }
 ]

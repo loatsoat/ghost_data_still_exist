@@ -417,13 +417,11 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "| custom_10 | Korean deletion request | Deletion authorized |",
         "| custom_11 | Complaint without deletion | NOT_APPLICABLE |",
         "| custom_12 | Tombstone/redaction request | Deletion authorized |",
-        "| custom_13 | SQL replica drift | Present replica drives an incomplete audit |",
-        "| custom_14 | Active data flow | Active flow requires disable and verification |",
-        "| custom_15 | Restore risk | Restorable backup requires block and verification |",
-        "| custom_16 | Account tombstone | Direct identifiers require redaction, stable reference retained |",
-        "\nDefinitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custom_cases.json`; "
-        "custom_13–custom_16 are exercised by the corresponding evidence fixtures and "
-        "Step D/E reports.\n",
+        "| custom_13 | Email change request | NOT_APPLICABLE |",
+        "| custom_14 | Login recovery request | NOT_APPLICABLE |",
+        "| custom_15 | Invoice-copy request | NOT_APPLICABLE |",
+        "| custom_16 | Deletion with policy-required retention | Deletion authorized |",
+        "\nDefinitions are in `code/evaluation/custom_cases/custom_cases.json`.\n",
         "\n## Final Full-Dataset Results\n",
         "The deterministic offline run produced 518 rows: 169 COMPLETE, "
         "330 INCOMPLETE, and 19 NOT_APPLICABLE. It has 20 empty INCOMPLETE "
@@ -434,10 +432,14 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "Compared with the baseline tag, 41 rows changed: 10 in block 1, "
         "2 in block 2, 6 in block 3, 1 in block 4, 18 in block 5, and 4 "
         "in block 6.\n\n",
+        "The numeric-suffix extrapolation trial was rejected: it lacked a "
+        "participant-visible identity link, reduced held-out step precision "
+        "and F1, and changed 58 rows.\n\n",
         "## Failures and Fixes\n",
         "| Stage | Failure | General fix | Metric change |\n",
         "|-------|---------|--------------|----------------|\n",
         "| Operational evidence | Wrapper logs hid the service in a same-row system field | Recognized-system fallback with identity and cutoff gates | Held-out metrics unchanged |\n",
+        "| Numeric-suffix trial | Identifier suffix did not ground a resource link | Rejected the extrapolation | Held-out precision/F1 decreased; 58 rows changed |\n",
         "| Evidence contract | Unsupported absence derivations risked empty COMPLETE | Positive-evidence gate | Zero empty COMPLETE rows |\n",
         "| Remaining gaps | Some traces contain only *_started rows or no mention | Keep unresolved cases INCOMPLETE; do not invent evidence | 20 empty INCOMPLETE rows |",
     ]

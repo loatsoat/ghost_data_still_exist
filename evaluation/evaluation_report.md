@@ -26,7 +26,7 @@ sequence accuracy is reported separately above.
 
 ## Participant-created evaluation cases
 
-The classifier suite exercises 15 custom cases in
+The classifier suite exercises 16 custom cases in
 `code/evaluation/custom_cases/custom_cases.json`:
 
 | Cases | Scenario | Expected behavior |
@@ -38,8 +38,9 @@ The classifier suite exercises 15 custom cases in
 | custom_11 | Ambiguous complaint without deletion intent | `NOT_APPLICABLE` |
 | custom_12 | Tombstone/redaction request | Deletion authorized |
 | custom_13–custom_15 | Email change, login recovery, and invoice-copy requests | `NOT_APPLICABLE` |
+| custom_16 | Deletion request with policy-required legal retention | Deletion authorized |
 
-The classifier test command passed all 15 custom cases, along with the
+The classifier test command passed all 16 custom cases, along with the
 previously misclassified public examples.
 
 ## Final full-dataset run
@@ -47,6 +48,10 @@ previously misclassified public examples.
 The locked full-dataset output contains one row for each of the 518 requests:
 169 `COMPLETE`, 330 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. Twenty
 `INCOMPLETE` rows have empty `steps_json`; there are no empty `COMPLETE` rows.
+Of the empty `INCOMPLETE` rows, 15 have only `*_started` traces and 5 have no
+participant-visible identifier mention. Compared with the `baseline` tag, 41
+rows changed: 10 in block 1, 2 in block 2, 6 in block 3, 1 in block 4, 18 in
+block 5, and 4 in block 6.
 These counts are output composition, not ground-truth accuracy: no full
 evaluation labels are available in participant-facing data.
 
@@ -65,6 +70,10 @@ samples do not contain those log formats.
   13 downstream-wrapper records, requiring a recognized same-row system,
   resource, resolved identity, and valid capture/record cutoffs. The change
   preserved tuning and held-out metrics and produced zero resource collisions.
+- **Rejected suffix extrapolation:** numeric suffixes in identifiers were not
+  accepted as identity links. The trial lacked a declared participant-visible
+  link, reduced held-out step precision and F1, and changed 58 rows, so it was
+  rejected and is not used in the final output.
 - **Final limitation review:** retained unresolved cases when the only trace
   was `*_started` or no participant-visible identifier was present, rather
   than inventing evidence.
