@@ -1,4 +1,5 @@
 .pdf_cache/
 .llm_cache/
+.snapshots/
 __pycache__/
 *.pyc

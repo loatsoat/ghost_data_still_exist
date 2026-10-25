@@ -298,6 +298,11 @@ def main():
         sys.stdout.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser()
     parser.add_argument('--trace', help='Dump per-step trace for a case_id')
+    parser.add_argument(
+        '--overwrite-report',
+        action='store_true',
+        help='Replace the top-level evaluation report with sample metrics',
+    )
     args = parser.parse_args()
 
     repo_root   = Path(__file__).parent.parent.parent
@@ -342,16 +347,13 @@ def main():
     m_tuning  = evaluate(req_tuning, exp_tuning, act_tuning, f"TUNING ({len(tuning)})")
     m_holdout = evaluate(req_holdout, exp_holdout, act_holdout, f"HELD-OUT ({len(holdout)})")
 
-    # Save baseline to evaluation_report.md
-    report_path = Path(__file__).parent / "evaluation_report.md"
-    try:
+    report_path = repo_root / "evaluation" / "evaluation_report.md"
+    if report_path.exists() and not args.overwrite_report:
+        print(f"\nFinal report preserved: {report_path}")
+    else:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
         _write_baseline(report_path, m_all, m_tuning, m_holdout, tuning, holdout)
-        submission_report = Path(__file__).parent.parent.parent / "evaluation" / "evaluation_report.md"
-        submission_report.parent.mkdir(exist_ok=True)
-        _write_baseline(submission_report, m_all, m_tuning, m_holdout, tuning, holdout)
-        print(f"\nBaseline saved to {report_path}")
-    except Exception as e:
-        print(f"\nReport write error (non-fatal): {e}")
+        print(f"\nSample metrics saved to {report_path}")
 
 
 def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):

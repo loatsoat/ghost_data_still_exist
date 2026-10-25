@@ -1,90 +1,80 @@
 # Evaluation Report
 
-## Baseline
+## Public-sample metrics
 
-Split: tuning=['case_01', 'case_03', 'case_05', 'case_07', 'case_09', 'case_11', 'case_13', 'case_15', 'case_17', 'case_19', 'case_21', 'case_23', 'case_25', 'case_27', 'case_29', 'case_31'], held-out=['case_02', 'case_04', 'case_06', 'case_08', 'case_10', 'case_12', 'case_14', 'case_16', 'case_18', 'case_20', 'case_22', 'case_24', 'case_26', 'case_28', 'case_30', 'case_32']
+The evaluator was run against all 32 public examples and their supplied
+expected outputs. These sample metrics describe only that set; they are not
+full-dataset accuracy measurements.
 
+| Set | Cases | Case-level status accuracy | Step precision | Step recall | Step F1 | Exact sequence |
+|---|---:|---:|---:|---:|---:|---:|
+| All public samples | 32 | 29/32 (90.6%) | 0.955 | 0.777 | 0.857 | 5/32 (15.6%) |
+| Tuning split | 16 | 15/16 (93.8%) | 0.987 | 0.806 | 0.888 | 3/16 (18.8%) |
+| Held-out split | 16 | 14/16 (87.5%) | 0.926 | 0.750 | 0.829 | 2/16 (12.5%) |
 
-| Set | Status Acc | Precision | Recall | F1 | Exact Seq | Ordering |
-|-----|-----------|-----------|--------|-----|-----------|----------|
-| All-32 | 0.906 | 0.955 | 0.777 | 0.857 | 0.156 | 1.000 |
-| Tuning | 0.938 | 0.987 | 0.806 | 0.888 | 0.188 | 1.000 |
-| Held-out | 0.875 | 0.926 | 0.750 | 0.829 | 0.125 | 1.000 |
+Step precision and recall match multiset step identities on phase, operation,
+system, and resource. Matched-step field accuracy on the all-sample set was:
 
-## Field and Status-Class Metrics
+| Field | Correct / evaluated | Accuracy |
+|---|---:|---:|
+| State | 150/150 | 100.0% |
+| Evidence ID | 150/150 | 100.0% |
+| Step number | 104/150 | 69.3% |
 
-| Set | COMPLETE Acc | INCOMPLETE Acc | NOT_APPLICABLE Acc | State | Evidence ID | Step No |
-|-----|--------------|----------------|--------------------|-------|-------------|---------|
-| All-32 | 0.700 | 1.000 | n/a | 1.000 | 1.000 | 0.693 |
-| Tuning | 0.833 | 1.000 | n/a | 1.000 | 1.000 | 0.733 |
-| Held-out | 0.500 | 1.000 | n/a | 1.000 | 1.000 | 0.653 |
+Matched-step ordering scored 1.000 using normalized Kendall tau. Exact
+sequence accuracy is reported separately above.
 
-## Status Confusion Matrices
+## Participant-created evaluation cases
 
-Rows are expected statuses; columns are predicted statuses.
+The classifier suite exercises 15 custom cases in
+`code/evaluation/custom_cases/custom_cases.json`:
 
-### All-32
-| Expected \ Predicted | COMPLETE | INCOMPLETE | NOT_APPLICABLE | MISSING |
-|---|---:|---:|---:|---:|
-| COMPLETE | 7 | 3 | 0 | 0 |
-| INCOMPLETE | 0 | 22 | 0 | 0 |
-| NOT_APPLICABLE | 0 | 0 | 0 | 0 |
-### Tuning
-| Expected \ Predicted | COMPLETE | INCOMPLETE | NOT_APPLICABLE | MISSING |
-|---|---:|---:|---:|---:|
-| COMPLETE | 5 | 1 | 0 | 0 |
-| INCOMPLETE | 0 | 10 | 0 | 0 |
-| NOT_APPLICABLE | 0 | 0 | 0 | 0 |
-### Held-out
-| Expected \ Predicted | COMPLETE | INCOMPLETE | NOT_APPLICABLE | MISSING |
-|---|---:|---:|---:|---:|
-| COMPLETE | 2 | 2 | 0 | 0 |
-| INCOMPLETE | 0 | 12 | 0 | 0 |
-| NOT_APPLICABLE | 0 | 0 | 0 | 0 |
-
-## Custom Evaluation Cases
-
-| ID | Scenario | Expected behavior |
-|----|----------|-------------------|
-| custom_01 | Access request | NOT_APPLICABLE |
-| custom_02 | Correction request | NOT_APPLICABLE |
-| custom_03 | Export/data portability | NOT_APPLICABLE |
-| custom_04 | Marketing opt-out | NOT_APPLICABLE |
-| custom_05 | German deletion request | Deletion authorized |
-| custom_06 | French access request | NOT_APPLICABLE |
-| custom_07 | Deletion with anonymous analytics wording | Deletion authorized |
-| custom_08 | Deletion mentioning a prior export | Deletion authorized |
-| custom_09 | Deletion mentioning correction | Deletion authorized |
+| Cases | Scenario | Expected behavior |
+|---|---|---|
+| custom_01–custom_04 | Access, correction, export, and marketing opt-out | `NOT_APPLICABLE` |
+| custom_05–custom_06 | German deletion and French non-deletion | Deletion authorized; `NOT_APPLICABLE` |
+| custom_07–custom_09 | Deletion wording includes analytics, export, or correction terms | Deletion authorized |
 | custom_10 | Korean deletion request | Deletion authorized |
-| custom_11 | Complaint without deletion | NOT_APPLICABLE |
+| custom_11 | Ambiguous complaint without deletion intent | `NOT_APPLICABLE` |
 | custom_12 | Tombstone/redaction request | Deletion authorized |
-| custom_13 | SQL replica drift | Present replica drives an incomplete audit |
-| custom_14 | Active data flow | Active flow requires disable and verification |
-| custom_15 | Restore risk | Restorable backup requires block and verification |
-| custom_16 | Account tombstone | Direct identifiers require redaction, stable reference retained |
+| custom_13–custom_15 | Email change, login recovery, and invoice-copy requests | `NOT_APPLICABLE` |
 
-Definitions for custom_01–custom_12 are in `code/evaluation/custom_cases/custom_cases.json`; custom_13–custom_16 are exercised by the corresponding evidence fixtures and Step D/E reports.
+The classifier test command passed all 15 custom cases, along with the
+previously misclassified public examples.
 
+## Final full-dataset run
 
-## Final Full-Dataset Results
+The locked full-dataset output contains one row for each of the 518 requests:
+169 `COMPLETE`, 330 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. Twenty
+`INCOMPLETE` rows have empty `steps_json`; there are no empty `COMPLETE` rows.
+These counts are output composition, not ground-truth accuracy: no full
+evaluation labels are available in participant-facing data.
 
-The deterministic offline run produced 518 rows: 169 COMPLETE, 330 INCOMPLETE, and 19 NOT_APPLICABLE. It has 20 empty INCOMPLETE rows (15 with only *_started traces and 5 with no participant-visible mention) and zero empty COMPLETE rows.
+The sample metrics cannot validate the log-derived rows; the 32 public
+samples do not contain those log formats.
 
+## Log-parser rounds
 
-The sample metrics cannot validate the log-derived rows because the 32 public samples do not contain those log formats.
+- **Rounds A–C:** added local PDF/image extraction, fixed status-related
+  evidence matching, and validated evaluation diagnostics.
+- **Rounds D–E:** compared SQL replicas and reconstructed activity and
+  restore timelines using identity-grounded links and audit-time cutoffs.
+- **Rounds F–H:** rejected unsupported absence inference, retained the
+  positive-evidence gate, and validated citations and output structure.
+- **Operational-log parser:** added explicit-state parsing for an additional
+  13 downstream-wrapper records, requiring a recognized same-row system,
+  resource, resolved identity, and valid capture/record cutoffs. The change
+  preserved tuning and held-out metrics and produced zero resource collisions.
+- **Final limitation review:** retained unresolved cases when the only trace
+  was `*_started` or no participant-visible identifier was present, rather
+  than inventing evidence.
 
+## Failures and improvements
 
-Compared with the baseline tag, 41 rows changed: 10 in block 1, 2 in block 2, 6 in block 3, 1 in block 4, 18 in block 5, and 4 in block 6.
-
-
-## Failures and Fixes
-
-| Stage | Failure | General fix | Metric change |
-
-|-------|---------|--------------|----------------|
-
-| Operational evidence | Wrapper logs hid the service in a same-row system field | Recognized-system fallback with identity and cutoff gates | Held-out metrics unchanged |
-
-| Evidence contract | Unsupported absence derivations risked empty COMPLETE | Positive-evidence gate | Zero empty COMPLETE rows |
-
-| Remaining gaps | Some traces contain only *_started rows or no mention | Keep unresolved cases INCOMPLETE; do not invent evidence | 20 empty INCOMPLETE rows |
+| Failure found | Improvement |
+|---|---|
+| PDF and image evidence was not available to the original text-only parser. | Added local PDF extraction and OCR support. |
+| SQL replica drift and active sync/restore processes could be missed. | Compared relevant snapshots and added grounded, time-bounded activity timelines. |
+| Wrapper logs could hide the underlying service and explicit state. | Added a constrained recognized-system fallback with identity and cutoff checks. |
+| Absence inferred from weak or unrelated evidence could falsely mark a case complete. | Kept a positive-evidence gate; only supported, cutoff-valid evidence drives findings and verification. |
+| Some cases still have no usable state evidence. | Leave those cases `INCOMPLETE` with no fabricated steps and document the evidence gaps. |

@@ -81,13 +81,6 @@ class IdentityResolver:
         uid = self.email_to_user.get(email_lower)
 
         if uid is None:
-            # Try partial matching - some emails may have slight variations
-            for known_email, mapped_uid in self.email_to_user.items():
-                if email_lower == known_email:
-                    uid = mapped_uid
-                    break
-
-        if uid is None:
             return None
 
         return {

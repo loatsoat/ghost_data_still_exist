@@ -1,6 +1,6 @@
 """
 Ghost Data Still Exists - Deletion Audit Agent
-Deterministic pipeline with targeted LLM assist (Option B).
+Deterministic offline pipeline; no LLM or network calls are used.
 
 Architecture:
 1. Data loading (CSV files)

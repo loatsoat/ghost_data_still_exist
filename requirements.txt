@@ -1,0 +1,2 @@
+pdfplumber==0.11.10
+rapidocr-onnxruntime==1.2.3
