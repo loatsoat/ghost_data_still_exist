@@ -61,8 +61,12 @@ class EvidenceIndex:
         self.all_records.append(record)
 
     def get_latest_record(self, resource_id, before_time):
+        # Fail closed: both the file capture time and the record's own timestamp
+        # must be at or before audit_at. A row updated after audit_at reflects
+        # future state and must not be used.
         candidates = [r for r in self.records_by_resource.get(resource_id, [])
-                      if r.captured_at <= before_time]
+                      if r.captured_at <= before_time
+                      and r.record_timestamp <= before_time]
         return max(candidates, key=lambda r: r.record_timestamp, default=None)
 
     def find_matching_records(self, identifiers, before_time):
@@ -81,7 +85,11 @@ class EvidenceIndex:
         match_details = {}
 
         for record in self.all_records:
+            # Fail closed on BOTH timestamps: file capture time and the record's
+            # own timestamp must be at or before audit_at.
             if record.captured_at > before_time:
+                continue
+            if record.record_timestamp > before_time:
                 continue
 
             hit = False
@@ -185,9 +193,49 @@ class EvidenceParser:
         return ids
 
     @staticmethod
+    def _classify_identifier(val):
+        """Classify a raw subject string into an identifier slot."""
+        v = (str(val).strip() if val is not None else '')
+        if not v or v in ('NULL', 'null', 'None', '[REDACTED]'):
+            return None, None
+        if '@' in v:
+            return 'email', v
+        if re.fullmatch(r'user_[A-Za-z0-9_-]+', v):
+            return 'customer_reference', v
+        if re.fullmatch(r'[0-9a-fA-F]{40,}', v):
+            return 'email_hash', v
+        if re.fullmatch(r'\+?[\d ()\-]{7,}', v):
+            return 'phone', v
+        return 'customer_reference', v  # opaque stable reference
+
+    @staticmethod
+    def _augment_subject_ids(identifiers, raw):
+        """
+        Fill empty identifier slots from subject_reference/subject_selector fields.
+        Used for backup and connector records, whose state is derived from
+        restore_allowed/enabled (never from identifiers), so adding an identifier
+        cannot change the record's state. This links restore risks and data flows
+        whose subject is stored under subject_reference rather than customer_email.
+        """
+        ids = dict(identifiers) if identifiers else {}
+        # user_id is the link column used by SQL profile/replica tables;
+        # the others are the subject fields used by catalogs and bundles.
+        for field in ('subject_reference', 'subject_selector', 'subject_key', 'user_id'):
+            slot, v = EvidenceParser._classify_identifier(raw.get(field))
+            if slot and not ids.get(slot):
+                ids[slot] = v
+        return ids
+
+    @staticmethod
     def _make(file_id, captured_at, system_id, resource_id,
               record_type, state, identifiers, raw=None,
               record_timestamp=None, source_format='unknown'):
+        raw = raw or {}
+        # Safe for every record type: `state` has already been computed by the
+        # caller, so filling identifier slots here can never change a state.
+        # It only lets a record be matched to its subject through whichever
+        # field the source used (subject_reference, user_id, ...).
+        identifiers = EvidenceParser._augment_subject_ids(identifiers, raw)
         return EvidenceRecord(
             file_id=file_id, captured_at=captured_at,
             system_id=system_id, resource_id=resource_id,

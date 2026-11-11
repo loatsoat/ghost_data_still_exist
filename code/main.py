@@ -110,16 +110,12 @@ def main():
             continue
 
         if identity is None:
-            # Identity not found - can't audit
+            # Identity not resolved. This is NOT a non-deletion request, so it
+            # must not become NOT_APPLICABLE. Fail closed: the engine returns an
+            # INCOMPLETE verdict because we cannot prove deletion is complete.
             identity_not_found_count += 1
-            results.append({
-                'case_id': request['case_id'],
-                'deletion_status': 'NOT_APPLICABLE',
-                'steps_json': []
-            })
-            continue
 
-        # 4c: Audit the deletion
+        # 4c: Audit the deletion (engine handles unresolved identity fail-closed)
         audit_result = audit_engine.audit(request, identity)
         results.append(audit_result)
 
@@ -139,7 +135,10 @@ def main():
     if valid:
         print(f"  Validation: {msg}")
     else:
+        # Fail closed: never ship an invalid output.csv. Exit non-zero so a
+        # packaging/CI step cannot mistake a broken run for a successful one.
         print(f"  VALIDATION ERROR: {msg}")
+        raise SystemExit(f"Output validation failed: {msg}")
     print()
 
     # === Step 6: Summary ===

@@ -53,14 +53,15 @@ def kendall_tau_normalized(seq_a, seq_b):
     if n < 2:
         return 1.0
     concordant = discordant = 0
+    # seq_a[k] and seq_b[k] are the positions of the SAME matched step in the
+    # expected and actual sequences. Compare corresponding pairs directly.
+    # (The previous version looked each value up in its own list with
+    # .index(), which reduces to comparing i with j and always reports
+    # perfect ordering, masking real sequence errors.)
     for i in range(n):
         for j in range(i+1, n):
-            ai = seq_a.index(seq_a[i]) if seq_a[i] in seq_a else i
-            bi = seq_b.index(seq_b[i]) if seq_b[i] in seq_b else i
-            aj = seq_a.index(seq_a[j]) if seq_a[j] in seq_a else j
-            bj = seq_b.index(seq_b[j]) if seq_b[j] in seq_b else j
-            sign_a = ai - aj
-            sign_b = bi - bj
+            sign_a = seq_a[i] - seq_a[j]
+            sign_b = seq_b[i] - seq_b[j]
             if sign_a * sign_b > 0:
                 concordant += 1
             elif sign_a * sign_b < 0:
@@ -185,7 +186,10 @@ def evaluate(requests, expected, actual, label="ALL"):
     print(f"{'='*70}")
 
     print("\n--- STATUS CONFUSION MATRIX ---")
-    header = f"{'Exp\\Act':<18}" + "".join(f"{s:<16}" for s in statuses + ['MISSING'])
+    # No backslash inside an f-string expression: that is a SyntaxError on
+    # Python < 3.12 and would prevent this script from running at all.
+    corner = 'Exp\\Act'
+    header = f"{corner:<18}" + "".join(f"{s:<16}" for s in statuses + ['MISSING'])
     print(header)
     print("-" * len(header))
     correct_total = 0

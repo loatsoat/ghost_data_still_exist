@@ -33,6 +33,21 @@ _RESOURCE_IN_DETAIL = re.compile(
 )
 
 
+def _subject_in_details(user_id, emails_lower, det_lower):
+    """
+    Identity-boundary check for free-text details.
+    Uses whole-token matching so user_1 never matches user_10 / user_100
+    (a plain substring test would cross user boundaries and link another
+    person's resource to this subject).
+    """
+    if user_id and re.search(r'(?<![\w-])' + re.escape(user_id) + r'(?![\w-])', det_lower):
+        return True
+    for e in emails_lower:
+        if e and re.search(r'(?<![\w.+-])' + re.escape(e) + r'(?![\w.+-])', det_lower):
+            return True
+    return False
+
+
 class SystemActivityLinker:
     """
     Pre-processes system_activity into per-user resource maps
@@ -261,7 +276,7 @@ class SystemActivityLinker:
             if not rid or rid in seen:
                 continue
             det_lower = det.lower()
-            linked = (user_id and user_id in det_lower) or any(e in det_lower for e in emails_lower)
+            linked = _subject_in_details(user_id, emails_lower, det_lower)
             if linked:
                 results.append((rid, aid))
                 seen.add(rid)
@@ -304,7 +319,7 @@ class SystemActivityLinker:
             if 'can still be restored' not in det:
                 continue
             det_lower = det.lower()
-            linked = (user_id and user_id in det_lower) or any(e in det_lower for e in emails_lower)
+            linked = _subject_in_details(user_id, emails_lower, det_lower)
             if linked:
                 results.append((rid, aid))
                 seen.add(rid)

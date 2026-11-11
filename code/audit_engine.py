@@ -196,10 +196,14 @@ class AuditEngine:
         audit_at = request['audit_at']
 
         if identity is None:
+            # Fail closed: a genuine deletion request whose subject we cannot
+            # resolve cannot be proven COMPLETE. Report INCOMPLETE rather than
+            # NOT_APPLICABLE, which is reserved for non-deletion requests.
             return {
                 'case_id': case_id,
-                'deletion_status': 'NOT_APPLICABLE',
-                'steps_json': []
+                'deletion_status': 'INCOMPLETE',
+                'steps_json': [],
+                'low_confidence': True,
             }
 
         identifiers = {

@@ -4,7 +4,14 @@ Output Writer - Writes the final output.csv with proper formatting.
 
 import csv
 import json
+import re
 from pathlib import Path
+
+
+def case_sort_key(case_id):
+    """Natural sort key so case_2 < case_10 < case_100 (not text order)."""
+    nums = re.findall(r'\d+', case_id)
+    return (tuple(int(n) for n in nums), case_id)
 
 
 # Problem statement allowed operation/state pairs.
@@ -38,8 +45,15 @@ class OutputWriter:
         """
         output_path = Path(output_path)
 
-        # Sort by case_id
-        results.sort(key=lambda r: r['case_id'])
+        # Sort by case_id (numeric/natural order, not text order)
+        results.sort(key=lambda r: case_sort_key(r['case_id']))
+
+        # Fail-closed integrity check: every case_id must be unique.
+        seen_ids = set()
+        for r in results:
+            if r['case_id'] in seen_ids:
+                raise ValueError(f"Duplicate case_id in results: {r['case_id']}")
+            seen_ids.add(r['case_id'])
 
         with open(output_path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
@@ -72,8 +86,8 @@ class OutputWriter:
             return False, f"Wrong header: {reader.fieldnames}"
 
         case_ids = [row['case_id'] for row in rows]
-        if case_ids != sorted(case_ids):
-            return False, "Rows are not sorted by case_id"
+        if case_ids != sorted(case_ids, key=case_sort_key):
+            return False, "Rows are not sorted by case_id (numeric order)"
 
         # Check each row
         for row in rows:
