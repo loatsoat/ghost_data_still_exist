@@ -103,10 +103,12 @@ Run the custom request-classifier tests with:
 
 ```powershell
 py -3 code/evaluation/test_classifier.py
+py -3 code/evaluation/test_audit.py
 ```
 
 ```bash
 python3 code/evaluation/test_classifier.py
+python3 code/evaluation/test_audit.py
 ```
 
 Both commands need the `dataset/` folder beside this README. The evaluator
@@ -137,10 +139,10 @@ in `evaluation/usage_report.md`.
 
 ## Known limitations
 
-The final output contains 20 authorized `INCOMPLETE` rows with empty
-`steps_json`: 15 have only non-state `*_started` traces, and 5 have no
-participant-visible identifier mention. These cases remain unresolved rather
-than inventing a resource match, a state, or a remediation target.
+The final output contains 2 authorized `INCOMPLETE` rows with empty
+`steps_json` (`case_61`, `case_63`): no evidence at or before `audit_at`
+mentions their subject. These cases remain unresolved rather than inventing
+a resource match, a state, or a remediation target.
 
 ## Package contents
 

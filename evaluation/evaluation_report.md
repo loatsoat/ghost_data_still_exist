@@ -46,10 +46,10 @@ previously misclassified public examples.
 ## Final full-dataset run
 
 The locked full-dataset output contains one row for each of the 518 requests:
-169 `COMPLETE`, 330 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. Twenty
-`INCOMPLETE` rows have empty `steps_json`; there are no empty `COMPLETE` rows.
-Of the empty `INCOMPLETE` rows, 15 have only `*_started` traces and 5 have no
-participant-visible identifier mention. Compared with the `baseline` tag, 41
+164 `COMPLETE`, 335 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. Two
+`INCOMPLETE` rows (`case_61`, `case_63`) have empty `steps_json`; there are
+no empty `COMPLETE` rows. No evidence at or before `audit_at` mentions the
+subject of those two rows. Compared with the `baseline` tag, 41
 rows changed: 10 in block 1, 2 in block 2, 6 in block 3, 1 in block 4, 18 in
 block 5, and 4 in block 6.
 These counts are output composition, not ground-truth accuracy: no full
@@ -74,9 +74,15 @@ samples do not contain those log formats.
   accepted as identity links. The trial lacked a declared participant-visible
   link, reduced held-out step precision and F1, and changed 58 rows, so it was
   rejected and is not used in the final output.
-- **Final limitation review:** retained unresolved cases when the only trace
-  was `*_started` or no participant-visible identifier was present, rather
-  than inventing evidence.
+- **Log-dialect trace linking:** 18 of 20 empty `INCOMPLETE` rows had log
+  evidence naming the subject, on a result row or on the `*_started` row of
+  the same trace id. Lambda, syslog, pipe, and bracket logs carry the trace id and event under
+  different names or positions, so the result row never inherited the
+  subject. Normalizing both, and reading restore-policy, restore-authorization,
+  connector-config, and redacted-message results, resolved those 18 rows and
+  changed 44 rows in total; public-sample metrics are unchanged.
+- **Final limitation review:** retained unresolved cases when no
+  participant-visible identifier was present, rather than inventing evidence.
 
 ## Failures and improvements
 
@@ -86,4 +92,5 @@ samples do not contain those log formats.
 | SQL replica drift and active sync/restore processes could be missed. | Compared relevant snapshots and added grounded, time-bounded activity timelines. |
 | Wrapper logs could hide the underlying service and explicit state. | Added a constrained recognized-system fallback with identity and cutoff checks. |
 | Absence inferred from weak or unrelated evidence could falsely mark a case complete. | Kept a positive-evidence gate; only supported, cutoff-valid evidence drives findings and verification. |
-| Some cases still have no usable state evidence. | Leave those cases `INCOMPLETE` with no fabricated steps and document the evidence gaps. |
+| Result rows in four log dialects were not tied to the subject named on their trace. | Normalized trace id and event across dialects; empty `INCOMPLETE` rows fell from 20 to 2. |
+| Two cases still have no usable state evidence. | Leave those cases `INCOMPLETE` with no fabricated steps and document the evidence gaps. |

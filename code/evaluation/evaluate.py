@@ -427,10 +427,10 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "| custom_16 | Deletion with policy-required retention | Deletion authorized |",
         "\nDefinitions are in `code/evaluation/custom_cases/custom_cases.json`.\n",
         "\n## Final Full-Dataset Results\n",
-        "The deterministic offline run produced 518 rows: 169 COMPLETE, "
-        "330 INCOMPLETE, and 19 NOT_APPLICABLE. It has 20 empty INCOMPLETE "
-        "rows (15 with only *_started traces and 5 with no participant-visible "
-        "mention) and zero empty COMPLETE rows.\n\n",
+        "The deterministic offline run produced 518 rows: 164 COMPLETE, "
+        "335 INCOMPLETE, and 19 NOT_APPLICABLE. It has 2 empty INCOMPLETE "
+        "rows (no evidence at or before audit_at mentions the subject) "
+        "and zero empty COMPLETE rows.\n\n",
         "The sample metrics cannot validate the log-derived rows because the "
         "32 public samples do not contain those log formats.\n\n",
         "Compared with the baseline tag, 41 rows changed: 10 in block 1, "
@@ -445,7 +445,8 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "| Operational evidence | Wrapper logs hid the service in a same-row system field | Recognized-system fallback with identity and cutoff gates | Held-out metrics unchanged |\n",
         "| Numeric-suffix trial | Identifier suffix did not ground a resource link | Rejected the extrapolation | Held-out precision/F1 decreased; 58 rows changed |\n",
         "| Evidence contract | Unsupported absence derivations risked empty COMPLETE | Positive-evidence gate | Zero empty COMPLETE rows |\n",
-        "| Remaining gaps | Some traces contain only *_started rows or no mention | Keep unresolved cases INCOMPLETE; do not invent evidence | 20 empty INCOMPLETE rows |",
+        "| Log dialects | Result rows were not tied to the subject named on their trace | Normalized trace id and event across dialects | Empty INCOMPLETE rows 20 -> 2 |",
+        "| Remaining gaps | No evidence mentions the subject | Keep unresolved cases INCOMPLETE; do not invent evidence | 2 empty INCOMPLETE rows |",
     ]
     path.write_text("\n".join(lines) + "\n", encoding='utf-8')
 

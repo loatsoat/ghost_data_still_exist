@@ -203,7 +203,6 @@ class AuditEngine:
                 'case_id': case_id,
                 'deletion_status': 'INCOMPLETE',
                 'steps_json': [],
-                'low_confidence': True,
             }
 
         identifiers = {
@@ -227,7 +226,6 @@ class AuditEngine:
                 'case_id': case_id,
                 'deletion_status': 'INCOMPLETE',
                 'steps_json': [],
-                'low_confidence': True,
             }
 
         # Classify each matched record into findings or compliant

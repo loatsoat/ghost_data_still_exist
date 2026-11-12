@@ -220,7 +220,10 @@ class EvidenceParser:
         ids = dict(identifiers) if identifiers else {}
         # user_id is the link column used by SQL profile/replica tables;
         # the others are the subject fields used by catalogs and bundles.
-        for field in ('subject_reference', 'subject_selector', 'subject_key', 'user_id'):
+        # The log keys cover a result row whose subject is named only on its
+        # trace's *_started row (inherited as lookup_key by _parse_log_file).
+        for field in ('subject_reference', 'subject_selector', 'subject_key',
+                      'user_id') + EvidenceParser._LOG_ID_KEYS:
             slot, v = EvidenceParser._classify_identifier(raw.get(field))
             if slot and not ids.get(slot):
                 ids[slot] = v
@@ -844,6 +847,24 @@ class EvidenceParser:
                 kv['service'] = service_match.group(1)
         if kv.get('service') == 'search_index_service':
             kv['service'] = kv.get('system', 'search_index_service')
+        # Pipe dialect: "ts | LEVEL | service | trace | event | k=v ..."
+        parts = line.split(' | ')
+        if len(parts) >= 6:
+            kv.setdefault('level', parts[1].strip())
+            kv.setdefault('event', parts[4].strip())
+        # Bracket dialect: "ts [LEVEL] [service] [trace] event: k=v ..."
+        bracket = re.match(r'\S+ \[(\w+)\] \[\w+\] \[[\w-]+\] (\w+):', line)
+        if bracket:
+            kv.setdefault('level', bracket.group(1))
+            kv.setdefault('event', bracket.group(2))
+        # Lambda logs name the trace requestId; syslog and pipe logs carry it
+        # positionally. Without it a result row cannot inherit the subject
+        # named on its trace's *_started row.
+        if not kv.get('trace_id'):
+            positional = re.search(r'(?:^|[\s|\[])((?:tr|rb)-\d[\w-]*)', line)
+            trace_id = kv.get('requestId') or (positional and positional.group(1))
+            if trace_id:
+                kv['trace_id'] = trace_id
         return kv
 
     def _parse_generic_log_record(self, service, kv, resource_id,
@@ -938,6 +959,8 @@ class EvidenceParser:
     def _log_line_to_record(self, service, event, kv, resource_id,
                              file_id, captured_at, event_time):
         m = self._make  # shorthand
+        if event.endswith('_started'):
+            return None  # a started row names the subject, never a result
 
         if service == 'account_service':
             if 'profile_lookup_completed' in event or 'profile_lookup' in event and 'completed' in event:
@@ -985,12 +1008,13 @@ class EvidenceParser:
                 return m(file_id, captured_at, 'analytics_platform', resource_id,
                          'analytics_profile', state, ids, raw=kv,
                          record_timestamp=event_time, source_format='log')
-            elif 'analytics_profile_read_completed' in event:
+            elif 'analytics_profile_read' in event:
+                # _clean: a literal "null" field is not an identifier.
                 ids = {
-                    'email': kv.get('email') or kv.get('customer_email'),
-                    'phone': kv.get('phone') or kv.get('customer_phone'),
-                    'email_hash': kv.get('email_hash'),
-                    'customer_reference': kv.get('customer_reference'),
+                    'email': self._clean(kv.get('email') or kv.get('customer_email')),
+                    'phone': self._clean(kv.get('phone') or kv.get('customer_phone')),
+                    'email_hash': self._clean(kv.get('email_hash')),
+                    'customer_reference': self._clean(kv.get('customer_reference')),
                 }
                 state = 'PRESENT' if any(ids.values()) else 'ANONYMIZED'
                 return m(file_id, captured_at, 'analytics_platform', resource_id,
@@ -1015,6 +1039,10 @@ class EvidenceParser:
                     return m(file_id, captured_at, 'support_platform', resource_id,
                              'support_record', 'PRESENT', ids, raw=kv,
                              record_timestamp=event_time, source_format='log')
+            if 'message_read' in event and kv.get('message_text') == '[REDACTED]':
+                return m(file_id, captured_at, 'support_platform', resource_id,
+                         'support_record', 'REDACTED', {}, raw=kv,
+                         record_timestamp=event_time, source_format='log')
             if 'support_ticket_read_completed' in event:
                 ids = {
                     'email': kv.get('requester_email') or kv.get('customer_email'),
@@ -1027,7 +1055,7 @@ class EvidenceParser:
                              record_timestamp=event_time, source_format='log')
 
         elif service == 'integration_service':
-            if 'connector_heartbeat' in event:
+            if 'connector_heartbeat' in event or 'connector_config_loaded' in event:
                 enabled = kv.get('enabled', 'false')
                 key = kv.get('subject_key') or kv.get('lookup_key')
                 ids = {'email': key if key and '@' in key else None,
@@ -1055,6 +1083,17 @@ class EvidenceParser:
                 ids = {'email': key if key and '@' in key else None,
                        'customer_reference': key if key and key.startswith('user_') else None}
                 state = 'BLOCKED' if block == 'true' else 'ACTIVE'
+                return m(file_id, captured_at, 'backup_service', resource_id,
+                         'backup', state, ids, raw=kv,
+                         record_timestamp=event_time, source_format='log')
+            state = None
+            if 'restore_policy_read_completed' in event:
+                state = 'ACTIVE' if kv.get('restore_allowed') == 'true' else 'BLOCKED'
+            elif 'restore_authorization_completed' in event:
+                state = {'deny': 'BLOCKED', 'allow': 'ACTIVE'}.get(kv.get('decision'))
+            if state:
+                ids = {'email': self._clean(kv.get('customer_email')),
+                       'customer_reference': self._clean(kv.get('customer_reference'))}
                 return m(file_id, captured_at, 'backup_service', resource_id,
                          'backup', state, ids, raw=kv,
                          record_timestamp=event_time, source_format='log')
