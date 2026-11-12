@@ -427,15 +427,12 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "| custom_16 | Deletion with policy-required retention | Deletion authorized |",
         "\nDefinitions are in `code/evaluation/custom_cases/custom_cases.json`.\n",
         "\n## Final Full-Dataset Results\n",
-        "The deterministic offline run produced 518 rows: 164 COMPLETE, "
-        "335 INCOMPLETE, and 19 NOT_APPLICABLE. It has 2 empty INCOMPLETE "
-        "rows (no evidence at or before audit_at mentions the subject) "
-        "and zero empty COMPLETE rows.\n\n",
+        "The deterministic offline run produced 518 rows: 165 COMPLETE, "
+        "334 INCOMPLETE, and 19 NOT_APPLICABLE. No authorized row has "
+        "empty steps.\n\n",
         "The sample metrics cannot validate the log-derived rows because the "
         "32 public samples do not contain those log formats.\n\n",
-        "Compared with the baseline tag, 41 rows changed: 10 in block 1, "
-        "2 in block 2, 6 in block 3, 1 in block 4, 18 in block 5, and 4 "
-        "in block 6.\n\n",
+        "Compared with the baseline tag, 226 rows differ.\n\n",
         "The numeric-suffix extrapolation trial was rejected: it lacked a "
         "participant-visible identity link, reduced held-out step precision "
         "and F1, and changed 58 rows.\n\n",
@@ -446,7 +443,8 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "| Numeric-suffix trial | Identifier suffix did not ground a resource link | Rejected the extrapolation | Held-out precision/F1 decreased; 58 rows changed |\n",
         "| Evidence contract | Unsupported absence derivations risked empty COMPLETE | Positive-evidence gate | Zero empty COMPLETE rows |\n",
         "| Log dialects | Result rows were not tied to the subject named on their trace | Normalized trace id and event across dialects | Empty INCOMPLETE rows 20 -> 2 |",
-        "| Remaining gaps | No evidence mentions the subject | Keep unresolved cases INCOMPLETE; do not invent evidence | 2 empty INCOMPLETE rows |",
+        "| Catalog links | Resources named only by a link event had no evidence | Joined link events to screenshots and PDFs by alias | Empty INCOMPLETE rows 2 -> 0 |",
+        "| Screenshot rows | Other people's rows were attributed to the subject | Kept only the catalog-linked row | 5 cases corrected |",
     ]
     path.write_text("\n".join(lines) + "\n", encoding='utf-8')
 

@@ -127,18 +127,19 @@ def main():
 
     # === Step 5: Write output ===
     print("[5/6] Writing output.csv...")
-    output_writer.write(output_path, results)
-    print(f"  Written to: {output_path}")
-
-    # Validate
-    valid, msg = output_writer.validate(output_path, len(deletion_requests))
-    if valid:
-        print(f"  Validation: {msg}")
-    else:
-        # Fail closed: never ship an invalid output.csv. Exit non-zero so a
-        # packaging/CI step cannot mistake a broken run for a successful one.
+    # Write beside the target and validate before replacing it, so a broken
+    # run never overwrites the last good output.csv.
+    tmp_path = output_path.with_name(output_path.name + '.tmp')
+    output_writer.write(tmp_path, results)
+    valid, msg = output_writer.validate(tmp_path, len(deletion_requests))
+    if not valid:
+        # Exit non-zero so a packaging/CI step cannot mistake a broken run
+        # for a successful one. The rejected file stays at tmp_path.
         print(f"  VALIDATION ERROR: {msg}")
-        raise SystemExit(f"Output validation failed: {msg}")
+        raise SystemExit(f"Output validation failed ({tmp_path}): {msg}")
+    tmp_path.replace(output_path)
+    print(f"  Written to: {output_path}")
+    print(f"  Validation: {msg}")
     print()
 
     # === Step 6: Summary ===

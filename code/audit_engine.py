@@ -8,9 +8,12 @@ Uses a reverse identifier index for matching.
 from collections import defaultdict
 
 # Import activity linker for Phase 3/5 data-flow and restore tracking
+import copy
+import re
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from activity_linker import SystemActivityLinker
+from evidence_parser import EvidenceParser, EvidenceRecord
 
 
 # Operation order for sorting within each phase
@@ -50,6 +53,15 @@ RECORD_TYPE_TO_CATEGORY = {
     'backup': 'BACKUP_ARCHIVE',
     'security_audit': 'SECURITY_AUDIT_LOG',
     'account_tombstone': 'ACCOUNT_TOMBSTONE',
+    'marketing_profile': 'MARKETING_PROFILE',
+    'secondary_identifier': 'SECONDARY_IDENTIFIER',
+}
+
+# Record types that may stay once direct identifiers are gone, and the state
+# a document showing none of them proves.
+IDENTIFIER_FREE_STATE = {
+    'account_tombstone': 'REDACTED',
+    'analytics_profile': 'ANONYMIZED',
 }
 
 # Map rule action to finding operation
@@ -214,8 +226,18 @@ class AuditEngine:
         }
 
         # Find all matching evidence records
+        # A snapshot taken by audit_at but exported in a later bundle shows
+        # the state at audit_at, yet its file cannot be cited. Such records
+        # only add uncited verification steps to an INCOMPLETE case.
+        with_late = self.evidence_index.find_matching_records(
+            identifiers, audit_at, by_record_time=True)
         matched_records = self.evidence_index.find_matching_records(identifiers, audit_at)
+        uncitable = {rid for rid in with_late if rid not in matched_records}
+        for rid in uncitable:
+            matched_records[rid] = with_late[rid]
         self.last_trace = {}
+        self._add_catalog_linked_records(
+            identifiers, request.get('requested_at', ''), audit_at, matched_records)
 
         # Also search system_activity for data flows, restore risks, and failed deletions
         activity_findings = self._find_activity_findings(identifiers, audit_at, matched_records)
@@ -350,8 +372,15 @@ class AuditEngine:
                     'action': action,
                 })
 
+        # A finding must cite its evidence, so an uncitable record cannot be one.
+        findings = [f for f in findings if f['resource_id'] not in uncitable]
+
         # Merge activity-based findings (data flows, restore risks)
         findings.extend(activity_findings)
+        if not findings:
+            # Every step of a COMPLETE case must cite evidence.
+            compliant_resources = [(record, action) for record, action in compliant_resources
+                                   if record.resource_id not in uncitable]
 
         # Generate steps
         if findings:
@@ -372,6 +401,75 @@ class AuditEngine:
                 'deletion_status': 'COMPLETE',
                 'steps_json': steps,
             }
+
+    def _add_catalog_linked_records(self, identifiers, requested_at, audit_at,
+                                    matched_records):
+        """
+        A LINK_RESOURCE_IDENTITY event ties a resource and its alias (a file
+        name, a statement number) to the subject. A screenshot or PDF that
+        shows the resource under that alias, or shows the subject in the
+        link's own system, is then evidence of the resource's state even
+        though the document never prints the resource id.
+
+        Only documents captured between the request and the audit count: a
+        capture from before the request cannot show what the deletion left.
+        """
+        def has_token(token, text):
+            return bool(token) and re.search(
+                r'(?<![\w.-])' + re.escape(token.lower()) + r'(?!\w)', text)
+
+        emails = {e.lower() for e in identifiers.get('emails', set()) if e}
+        user_id = identifiers.get('user_id') or ''
+        name = (identifiers.get('name') or '').lower().strip()
+
+        links = self.linker.get_links_for_user(identifiers, audit_at)
+
+        # A console screenshot lists several people's rows, and the parser
+        # ties a row to whichever identifier sits near it. When the catalog
+        # names the subject's row, the other rows of that screenshot belong
+        # to other people.
+        linked = {rid for rid, _, _ in links}
+        for rid in linked & matched_records.keys():
+            shot = matched_records[rid]
+            if shot.source_format != 'image_ocr':
+                continue
+            for other, record in list(matched_records.items()):
+                if (other not in linked and record.file_id == shot.file_id
+                        and record.source_format == 'image_ocr'):
+                    del matched_records[other]
+
+        for rid, alias, system in links:
+            if rid in matched_records:
+                continue
+            parsed_system, record_type = EvidenceParser._rid_to_system(rid)
+            if parsed_system == 'unknown_service':
+                continue
+
+            best = None
+            for file_id, captured_at, origin, text in self.evidence_index.documents:
+                if not requested_at <= captured_at <= audit_at:
+                    continue
+                if best and captured_at <= best[1]:
+                    continue
+                text = text.lower()
+                # A user reference in the alias slot names the subject, not
+                # the resource, so it only counts inside the link's system.
+                names_resource = has_token(rid, text) or (
+                    alias != user_id and has_token(alias, text))
+                shows_subject = origin == system and (
+                    has_token(user_id, text) or any(e in text for e in emails))
+                if names_resource or shows_subject:
+                    best = (file_id, captured_at, text)
+            if not best:
+                continue
+
+            file_id, captured_at, text = best
+            exposed = any(e in text for e in emails) or (name and name in text)
+            state = 'PRESENT' if exposed else IDENTIFIER_FREE_STATE.get(
+                record_type, 'PRESENT')
+            matched_records[rid] = EvidenceRecord(
+                file_id, captured_at, system or parsed_system, rid, record_type,
+                state, {'customer_reference': user_id}, source_format='document')
 
     def _build_trace(self, steps, matched_records):
         traces = {}
@@ -406,7 +504,10 @@ class AuditEngine:
             ev_rec = matched_records.get(rid)
             if ev_rec and ev_rec.state == 'ACTIVE':
                 # Update evidence_id to activity_id if available
-                ev_rec.file_id = aid or ev_rec.file_id
+                if aid:
+                    # Copy: evidence records are shared across cases.
+                    matched_records[rid] = copy.copy(ev_rec)
+                    matched_records[rid].file_id = aid
                 continue
             findings.append({
                 'system_id': 'integration_service',
@@ -422,7 +523,10 @@ class AuditEngine:
         for rid, aid in self.linker.get_active_restores_for_user(identifiers, audit_at):
             ev_rec = matched_records.get(rid)
             if ev_rec and ev_rec.state == 'ACTIVE':
-                ev_rec.file_id = aid or ev_rec.file_id
+                if aid:
+                    # Copy: evidence records are shared across cases.
+                    matched_records[rid] = copy.copy(ev_rec)
+                    matched_records[rid].file_id = aid
                 continue
             findings.append({
                 'system_id': 'backup_service',

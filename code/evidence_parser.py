@@ -55,6 +55,8 @@ class EvidenceIndex:
         self.records_by_resource = defaultdict(list)
         self.all_records = []
         self.last_match_details = {}
+        # (file_id, captured_at, origin, text) of every PDF and screenshot
+        self.documents = []
 
     def add_record(self, record):
         self.records_by_resource[record.resource_id].append(record)
@@ -69,11 +71,16 @@ class EvidenceIndex:
                       and r.record_timestamp <= before_time]
         return max(candidates, key=lambda r: r.record_timestamp, default=None)
 
-    def find_matching_records(self, identifiers, before_time):
+    def find_matching_records(self, identifiers, before_time, by_record_time=False):
         """
         Match records captured at or before before_time against all identifier forms.
         Returns {resource_id: latest_EvidenceRecord}.
         Uses: email (case-insensitive), phone, email_hash, customer_reference, name.
+
+        by_record_time=True also accepts a record whose own timestamp is at or
+        before before_time inside a file exported later (a bundle of earlier
+        snapshots). Such a record shows the state at before_time but its file
+        cannot be cited.
         """
         emails_lower  = {e.lower() for e in identifiers.get('emails', set()) if e}
         phones        = {p for p in identifiers.get('phones', set()) if p}
@@ -87,7 +94,7 @@ class EvidenceIndex:
         for record in self.all_records:
             # Fail closed on BOTH timestamps: file capture time and the record's
             # own timestamp must be at or before audit_at.
-            if record.captured_at > before_time:
+            if record.captured_at > before_time and not by_record_time:
                 continue
             if record.record_timestamp > before_time:
                 continue
@@ -163,6 +170,7 @@ class EvidenceParser:
                 continue
 
             ext = full_path.suffix.lower()
+            text = ''
             if ext == '.sql':
                 self._parse_sql_file(full_path, file_id, captured_at, index)
             elif ext == '.json':
@@ -172,9 +180,12 @@ class EvidenceParser:
             elif ext == '.txt':
                 self._parse_text_file(full_path, file_id, captured_at, index)
             elif ext == '.pdf':
-                self._parse_pdf_file(full_path, file_id, captured_at, index)
+                text = self._parse_pdf_file(full_path, file_id, captured_at, index)
             elif ext == '.png':
-                self._parse_image_file(full_path, file_id, captured_at, index)
+                text = self._parse_image_file(full_path, file_id, captured_at, index)
+            if text:
+                index.documents.append(
+                    (file_id, captured_at, entry.get('origin', ''), text))
         return index
 
     # ── helpers ──────────────────────────────────────────────────────────
@@ -755,11 +766,10 @@ class EvidenceParser:
         for line in lines:
             kv = self._log_fields(line)
             trace_id = kv.get('trace_id')
-            identifier = (
-                kv.get('lookup_key') or kv.get('subject_key') or
-                kv.get('owner_key') or kv.get('matched_value') or
-                kv.get('correlation_key')
-            )
+            # Any subject key counts: audit-record traces use subject_ref,
+            # search traces use match_key.
+            identifier = next(
+                (kv[k] for k in self._LOG_ID_KEYS if kv.get(k)), None)
             if trace_id and identifier:
                 trace_identifiers[trace_id] = identifier
 
@@ -1004,9 +1014,11 @@ class EvidenceParser:
                 rows = int(kv.get('rows', 0))
                 corr = kv.get('correlation_key')
                 ids = {'email_hash': corr if corr and '@' not in corr else None}
-                state = 'PRESENT' if rows > 0 else 'ANONYMIZED'
+                # A contact lookup reads the contact index, not a profile:
+                # the row is a secondary identifier (rule: always delete).
+                state = 'PRESENT' if rows > 0 else 'ABSENT'
                 return m(file_id, captured_at, 'analytics_platform', resource_id,
-                         'analytics_profile', state, ids, raw=kv,
+                         'secondary_identifier', state, ids, raw=kv,
                          record_timestamp=event_time, source_format='log')
             elif 'analytics_profile_read' in event:
                 # _clean: a literal "null" field is not an identifier.
@@ -1028,8 +1040,9 @@ class EvidenceParser:
                 ids = {'email': key if key and '@' in key else None,
                        'phone': key if key and '@' not in key else None}
                 if rows > 0:
+                    # Contact-index row, not a message: secondary identifier.
                     return m(file_id, captured_at, 'support_platform', resource_id,
-                             'support_record', 'PRESENT', ids, raw=kv,
+                             'secondary_identifier', 'PRESENT', ids, raw=kv,
                              record_timestamp=event_time, source_format='log')
             if 'message_pii_scan' in event or 'attachment_pii_scan' in event:
                 val = kv.get('matched_value')
@@ -1236,9 +1249,10 @@ class EvidenceParser:
         return facts
 
     def _parse_pdf_file(self, filepath, file_id, captured_at, index):
+        """Add the PDF's records to the index and return its text."""
         facts = self._extract_pdf_facts(filepath)
         if not facts or 'pages' not in facts:
-            return
+            return ''
 
         full_text = '\n'.join(facts.get('pages', []))
         emails    = facts.get('emails', [])
@@ -1247,6 +1261,8 @@ class EvidenceParser:
         full_rids = facts.get('full_resource_ids', [])
 
         for rid in full_rids:
+            if not re.search(r'_\d+$', rid):
+                continue  # an event or field name, not a resource id
             # Determine system from prefix
             prefix = rid.split('_')[0] + '_' + (rid.split('_')[1] if len(rid.split('_')) > 1 else '')
             system_id, record_type = self._rid_to_system(rid)
@@ -1268,6 +1284,7 @@ class EvidenceParser:
                 record_type, state, ids, raw={'pdf_context': ctx[:300]},
                 record_timestamp=captured_at, source_format='pdf',
             ))
+        return full_text
 
     @staticmethod
     def _rid_to_system(rid):
@@ -1281,6 +1298,8 @@ class EvidenceParser:
         if p.startswith('backup_'):     return 'backup_service',     'backup'
         if p.startswith('audit_record_'): return 'security_service', 'security_audit'
         if p.startswith('tombstone_'):  return 'identity_service',   'account_tombstone'
+        if p.startswith('object_'):     return 'object_storage',     'support_attachment'
+        if p.startswith('marketing_'):  return 'marketing_platform', 'marketing_profile'
         return 'unknown_service', rid.split('_')[0]
 
     @staticmethod
@@ -1309,7 +1328,7 @@ class EvidenceParser:
 
     # ── Image (placeholder) ───────────────────────────────────────────────
     def _parse_image_file(self, filepath, file_id, captured_at, index):
-        """Extract structured identifiers and nearby state from a screenshot."""
+        """Add the screenshot's records to the index and return its OCR text."""
         cache_path = self._image_cache_path(filepath)
         facts = None
         if cache_path.exists():
@@ -1338,14 +1357,21 @@ class EvidenceParser:
 
         text = facts.get('text', '')
         if not text:
-            return
+            return ''
 
         emails = list(dict.fromkeys(self._EMAIL_RE.findall(text)))
         phones = list(dict.fromkeys(self._PHONE_RE.findall(text)))
         user_refs = list(dict.fromkeys(self._USER_RE.findall(text)))
         resource_ids = list(dict.fromkeys(re.findall(
             r'\b(?:account|search|analytics|support|export|data_flow|backup|'
-            r'audit_record|tombstone)_[\w-]+\b', text, re.I)))
+            r'audit_record|tombstone)_\w+\b', text, re.I)))
+        # OCR reads zeros in a numeric suffix as the letter o ("_oo3").
+        resource_ids = list(dict.fromkeys(
+            re.sub(r'_[0-9oO]+$', lambda m: m.group(0).lower().replace('o', '0'), rid)
+            for rid in resource_ids))
+        # A resource id ends in a number; "account_closure_recorded" is an
+        # event name that only shares the prefix.
+        resource_ids = [rid for rid in resource_ids if re.search(r'_\d+$', rid)]
 
         for resource_id in resource_ids:
             system_id, record_type = self._rid_to_system(resource_id)
@@ -1372,6 +1398,7 @@ class EvidenceParser:
                 record_timestamp=captured_at,
                 source_format='image_ocr',
             ))
+        return text
 
     def _image_cache_path(self, filepath):
         image_hash = hashlib.sha256(filepath.read_bytes()).hexdigest()

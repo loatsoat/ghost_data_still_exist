@@ -1880,3 +1880,91 @@ branch=main
 repo_root=c:\Users\bchau\Downloads\hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
+
+## [2026-11-12T15:57:52Z] Remaining review fixes, catalog-link join, screenshot attribution
+
+User Prompt (verbatim, secrets redacted):
+solve all of it step by step
+
+Agent Response Summary:
+Worked through every outstanding item. main.py now writes to a temporary file, validates, then replaces output.csv. activity_linker.py lost its dead details scans, second pass and linear lookup, reads all 12 link events (2 were missed), and lets a later successful delete supersede a failure. The engine no longer mutates shared evidence records. New logic joins LINK_RESOURCE_IDENTITY events to screenshots and PDFs by alias inside the request-to-audit window, which resolved the last two empty rows (case_61, case_63), and drops other people's rows from a console screenshot once the catalog names the subject's row (5 cases). Removed an event name read as a resource id and two OCR-damaged ids. Output is 165 COMPLETE / 334 INCOMPLETE / 19 NOT_APPLICABLE with no empty authorized rows; sample metrics are unchanged (29/32, P 0.955, R 0.777). Review finding 6 was not applied because the identifier classifier's phone and hash branches are now used by log keys.
+
+Actions:
+* Edited code/main.py, code/activity_linker.py, code/audit_engine.py, code/evidence_parser.py
+* Extended code/evaluation/test_audit.py (6 checks, all pass); test_classifier.py passes
+* Ran code/main.py (regenerated output.csv) and code/evaluation/evaluate.py
+* Updated README.md, evaluation/evaluation_report.md, code/evaluation/evaluate.py report text
+* Rebuilt code.zip (16 entries, no caches); updated memory note
+
+Context:
+tool=Claude Code
+model=claude-fable-5-2
+branch=main
+repo_root=c:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-11-12T15:59:44Z] Assessment of remaining room for improvement
+
+User Prompt (verbatim, secrets redacted):
+is the result the most efficient or theres still room for improvement
+
+Agent Response Summary:
+Measured the current solution against the 32 public samples to answer where it still falls short. Broke the misses down by step type, counted wrong evidence ids and ordering errors, and listed the open policy gaps. No code or output was changed; the answer ranks the remaining improvements.
+
+Actions:
+* Ran a read-only diagnostic comparing sample predictions with dataset/sample_output.csv
+* Appended to log.txt
+
+Context:
+tool=Claude Code
+model=claude-fable-5-2
+branch=main
+repo_root=c:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-11-12T16:02:44Z] Item 3: contact-index rows use the delete rule
+
+User Prompt (verbatim, secrets redacted):
+start 3
+
+Agent Response Summary:
+Traced the two sample records that got the wrong rule (case_10 support_002, case_12 analytics_9914). Both come from contact_query / contact_lookup log results, which read the contact index, so they are secondary identifiers (always delete) rather than a support message or analytics profile. Reclassified those log results as a new secondary_identifier record type mapped to SECONDARY_IDENTIFIER. Sample precision rose 0.955 to 0.994, recall 0.777 to 0.808, exact sequences 5 to 6 of 32; status accuracy stays 29/32. Nine full-dataset rows changed; output.csv regenerated and valid (165/334/19).
+
+Actions:
+* Edited code/evidence_parser.py (two contact handlers) and code/audit_engine.py (category map)
+* Added a contact-row check to code/evaluation/test_audit.py; both test scripts pass
+* Ran code/main.py and code/evaluation/evaluate.py
+* Updated evaluation/evaluation_report.md and evaluate.py report text; rebuilt code.zip
+
+Context:
+tool=Claude Code
+model=claude-fable-5-2
+branch=main
+repo_root=c:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-11-12T16:06:39Z] Item 2: retained records via trace keys and late-exported snapshots
+
+User Prompt (verbatim, secrets redacted):
+start 2
+
+Agent Response Summary:
+Traced all 16 missed retained/anonymized sample steps to their evidence. Fixed two causes for the retained audit records: the log trace join now accepts any subject key on the started row (subject_ref, match_key), and a snapshot taken by audit_at but exported in a later bundle now contributes uncited verification steps to INCOMPLETE cases only (never a finding, never a COMPLETE step, never cited). Sample gained 8 steps, all correct: recall 0.808 to 0.850, F1 0.891 to 0.916, exact sequences 6 to 10 of 32, precision 0.994, status 29/32. Full dataset: 134 rows gained steps, no status changes, zero citations of files captured after audit_at; output.csv regenerated and valid (165/334/19). The 7 anonymized records and 2 audit records remain unreachable: they carry no identifier in any participant file.
+
+Actions:
+* Edited code/evidence_parser.py (trace keys, find_matching_records by_record_time)
+* Edited code/audit_engine.py (uncitable records handling)
+* Extended code/evaluation/test_audit.py; both test scripts pass
+* Ran code/main.py and code/evaluation/evaluate.py
+* Updated evaluation/evaluation_report.md and evaluate.py report text; rebuilt code.zip
+
+Context:
+tool=Claude Code
+model=claude-fable-5-2
+branch=main
+repo_root=c:\Users\bchau\Downloads\hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none

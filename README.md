@@ -139,10 +139,15 @@ in `evaluation/usage_report.md`.
 
 ## Known limitations
 
-The final output contains 2 authorized `INCOMPLETE` rows with empty
-`steps_json` (`case_61`, `case_63`): no evidence at or before `audit_at`
-mentions their subject. These cases remain unresolved rather than inventing
-a resource match, a state, or a remediation target.
+Every authorized row in the final output has steps. Three public sample
+cases (`case_01`, `case_02`, `case_04`) still produce `INCOMPLETE` with empty
+`steps_json`: no participant-visible evidence ties their absent account
+record to the subject, and the solution does not invent a resource match.
+
+The public samples contain none of the lambda, syslog, pipe, or bracket log
+formats and cite none of the console screenshots, so sample metrics cannot
+confirm the rows that depend on them. `code/evaluation/test_audit.py` checks
+that logic with synthetic inputs instead.
 
 ## Package contents
 
