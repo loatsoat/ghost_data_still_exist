@@ -17,9 +17,9 @@ system, and resource. Matched-step field accuracy on the all-sample set was:
 
 | Field | Correct / evaluated | Accuracy |
 |---|---:|---:|
-| State | 150/150 | 100.0% |
-| Evidence ID | 150/150 | 100.0% |
-| Step number | 104/150 | 69.3% |
+| State | 164/164 | 100.0% |
+| Evidence ID | 164/164 | 100.0% |
+| Step number | 118/164 | 72.0% |
 
 Matched-step ordering scored 1.000 using normalized Kendall tau. Exact
 sequence accuracy is reported separately above.
@@ -46,8 +46,8 @@ previously misclassified public examples.
 ## Final full-dataset run
 
 The locked full-dataset output contains one row for each of the 518 requests:
-165 `COMPLETE`, 334 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. No authorized
-row has empty `steps_json`. Compared with the `baseline` tag, 226 rows
+155 `COMPLETE`, 344 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. No authorized
+row has empty `steps_json`. Compared with the `baseline` tag, 279 rows
 differ.
 These counts are output composition, not ground-truth accuracy: no full
 evaluation labels are available in participant-facing data.
@@ -105,6 +105,48 @@ samples do not contain those log formats.
   Eight sample steps were added, all correct: recall 0.808 to 0.850, exact
   sequences 6 to 10 of 32. 134 full-dataset rows gained steps; no status
   changed and no step cites a file captured after `audit_at`.
+- **Self-describing manifest rows:** six JSON files hold rows that name
+  their own `record_type`, `system` and `result` (an export manifest, an
+  `operational_record_history` collection inside snapshot bundles, and two
+  files whose names suggest a single category). Only the `USER_PROFILE`
+  rows of the top-level files were read; 196 rows were dropped (162 search,
+  audit, support, analytics, data-flow, backup, export and legal-hold rows,
+  and 34 account rows inside bundles). All are now read through one
+  path, and a bundle row keeps its file's capture time so a late export is
+  never cited. Legal-hold records (`retained_order_records`, rule 13) were
+  not recognised in any format and are now retained-and-verified. 46 rows
+  changed; 11 cases reported `COMPLETE` on the account row alone while the
+  same file showed a search document, support message or data flow still
+  live at `audit_at`, and are now `INCOMPLETE`.
+- **Redacted ticket read as exposed:** a `support_ticket_read_completed`
+  log row with `requester_email=null` and only the stable reference was
+  reported as exposed PII, because the literal `null` counted as a value.
+  It is now `REDACTED`; 11 cases with that single false finding changed
+  from `INCOMPLETE` to `COMPLETE`. Public-sample metrics are unchanged by
+  both fixes: the samples contain neither pattern.
+- **Coverage audit:** every record id written in each text evidence file
+  was compared with the ids the parser indexed for that file. Three more
+  gaps appeared. SQL inventory tables dropped the account-tombstone
+  collection (8 tombstones, 4 still holding a name, email or phone) and the
+  ticket-attachment collection (6). Log rows of the form `event=record_lookup
+  ... record_type=... result=...` were read only for some categories; 23
+  analytics, support, data-flow and backup rows were dropped. One legal-hold
+  log result was not tied to the subject on its trace. All four are fixed;
+  29 rows changed and 10 cases moved from `COMPLETE` to `INCOMPLETE`, each
+  on a finding in a file captured by `audit_at`. After the fix the audit
+  finds no unread id except decoys: 300 profile lookups for people with no
+  request, one thumbnail error row, and two neighbours in a sample file.
+  Public-sample metrics are unchanged.
+- **Open items checked, no change made:** (1) Retention conditions: every
+  `retention_until` and `retained_until` in the evidence falls in 2031-2034
+  and every audit is in 2026, so the retain rules always apply. (2) Step
+  numbers: matched steps are in the expected order (ordering 1.000); every
+  wrong `step_no` is a shift caused by a missing earlier step. (3) Missing
+  account-absent step: the account id appears only in a `DELETE_RECORD`
+  activity row that names no subject. One sample file links a search
+  document to its account through `source_resource_id`; that column exists
+  in no other file and its subject is not in the 518 requests, so it was
+  not built. Linking by id numbering or by event time stays rejected.
 - **Final limitation review:** three public sample cases still have no
   participant-visible link to their absent account record and stay
   `INCOMPLETE` with no steps, rather than inventing evidence.
@@ -121,3 +163,6 @@ samples do not contain those log formats.
 | Resources named only by a catalog link event had no evidence attached. | Joined link events to screenshots and PDFs by alias, inside the request-to-audit window; empty `INCOMPLETE` rows fell from 2 to 0. |
 | Console screenshots attributed other people's rows to the subject. | Kept only the row the catalog links to the subject; removed non-resource and OCR-damaged ids. |
 | A failed validation left a broken `output.csv` in place. | Write to a temporary file, validate, then replace. |
+| Manifest-style JSON rows other than account rows were ignored, and legal holds were unknown to the engine. | One reader for every self-describing row; legal-hold collection mapped to the retain rule; late bundles stay uncitable. |
+| A log value of `null` was treated as a present identifier. | Null-cleaned the ticket fields; reference-only tickets are `REDACTED`. |
+| Tombstones and ticket attachments in SQL inventory tables, and lookup rows in log form, were not read. | Mapped both collections and routed lookup log rows through the manifest reader; a per-file id coverage audit now shows no unread non-decoy id. |

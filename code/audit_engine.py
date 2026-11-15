@@ -55,6 +55,7 @@ RECORD_TYPE_TO_CATEGORY = {
     'account_tombstone': 'ACCOUNT_TOMBSTONE',
     'marketing_profile': 'MARKETING_PROFILE',
     'secondary_identifier': 'SECONDARY_IDENTIFIER',
+    'legal_hold': 'LEGAL_HOLD_RECORD',
 }
 
 # Record types that may stay once direct identifiers are gone, and the state

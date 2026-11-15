@@ -403,6 +403,12 @@ class EvidenceParser:
                                            self._SQL_TABLE_MAP['backup_restore_entries'][2]),
                         'security_audit_events': ('security_service', 'security_audit',
                                                   self._SQL_TABLE_MAP['security_audit_records'][2]),
+                        'retained_order_records': ('legal_service', 'legal_hold',
+                                                   {'customer_reference': 'subject_reference'}),
+                        'deleted_customer_references': self._SNAPSHOT_COLLECTION_MAP[
+                            ('identity_service', 'deleted_customer_references')],
+                        'ticket_attachments': self._SNAPSHOT_COLLECTION_MAP[
+                            ('support_platform', 'ticket_attachments')],
                     }.get(collection)
                     if not mapping:
                         continue
@@ -451,6 +457,8 @@ class EvidenceParser:
             return 'ACTIVE' if str(ra) == '1' or str(ra).lower() == 'true' else 'BLOCKED'
         if record_type == 'security_audit':
             return 'PRESENT'
+        if record_type == 'account_tombstone':
+            return EvidenceParser._json_state(record_type, d, ids)
         return 'PRESENT'
 
     # ── JSON ──────────────────────────────────────────────────────────────
@@ -477,6 +485,8 @@ class EvidenceParser:
         ('backup_service',     'backup_catalog'):            ('backup_service',     'backup',            {'email':'customer_email','customer_reference':'customer_reference'}),
         ('identity_service',   'deleted_customer_references'): ('identity_service', 'account_tombstone', {'email':'email','phone':'phone','email_hash':'email_hash','customer_reference':'subject_reference','name':'name'}),
         ('security_service',   'security_audit_events'):     ('security_service',   'security_audit',    {'customer_reference':'subject_reference'}),
+        ('legal_service',      'retained_order_records'):    ('legal_service',      'legal_hold',        {'customer_reference':'subject_reference'}),
+        ('support_platform',   'ticket_attachments'):        ('support_platform',   'support_attachment', {'email':'uploaded_by'}),
     }
 
     def _parse_snapshot_bundle(self, data, file_id, captured_at, index):
@@ -486,6 +496,15 @@ class EvidenceParser:
             snap_ts = snap.get('captured_at', captured_at)
             mapping = self._SNAPSHOT_COLLECTION_MAP.get((ds, col))
             if not mapping:
+                # A collection named only by its wrapper data_store (varies by
+                # capture) but whose rows self-describe via record_type, like
+                # an export manifest's rows.
+                recs = snap.get('records', [])
+                if recs and isinstance(recs[0], dict) and 'record_type' in recs[0]:
+                    # A bundle exported after audit_at must stay uncitable.
+                    self._add_manifest_rows(recs, file_id, snap_ts, index,
+                                             source_format='json_snapshot',
+                                             file_captured_at=captured_at)
                 continue
             system_id, record_type, id_map = mapping
             for d in snap.get('records', []):
@@ -636,29 +655,7 @@ class EvidenceParser:
                     source_format='json_generic',
                 ))
 
-        for d in records:
-            rid = d.get('resource_id')
-            if not rid:
-                continue
-            record_type_name = str(d.get('record_type', '')).upper()
-            system = d.get('system', '')
-            if record_type_name == 'USER_PROFILE' or system == 'account_service':
-                record_type = 'customer_profile'
-                system_id = 'account_service'
-                ids = {
-                    'email': self._clean(d.get('subject_reference')),
-                    'phone': None,
-                    'email_hash': None,
-                    'customer_reference': None,
-                }
-                result = str(d.get('result', '')).upper()
-                state = 'ABSENT' if result in ('ABSENT', 'NOT_FOUND') else 'PRESENT'
-                index.add_record(self._make(
-                    file_id, d.get('recorded_at', captured_at), system_id, rid,
-                    record_type, state, ids, raw=d,
-                    record_timestamp=d.get('recorded_at', captured_at),
-                    source_format='json_generic',
-                ))
+        self._add_manifest_rows(records, file_id, captured_at, index)
 
         for d in data.get('profiles', []):
             rid = d.get('resource_id')
@@ -808,6 +805,15 @@ class EvidenceParser:
             if not resource_id:
                 continue
 
+            # A lookup row that states its own record_type and result is a
+            # manifest row in log form.
+            if (str(kv.get('record_type', '')).upper() in self._TYPE_MAP
+                    and str(kv.get('result', '')).upper() in self._STATUS_MAP):
+                self._add_manifest_rows(
+                    [dict(kv, recorded_at=event_time)], file_id, captured_at,
+                    index, source_format='log', file_captured_at=captured_at)
+                continue
+
             generic = self._parse_generic_log_record(
                 service, kv, resource_id, file_id, captured_at, event_time
             )
@@ -850,7 +856,7 @@ class EvidenceParser:
             service_match = re.search(
                 r'\b(account_service|search_service|search_index_service|'
                 r'analytics_platform|support_platform|export_service|'
-                r'security_service|integration_service|backup_service)\b',
+                r'security_service|integration_service|backup_service|legal_service)\b',
                 line,
             )
             if service_match:
@@ -1057,14 +1063,17 @@ class EvidenceParser:
                          'support_record', 'REDACTED', {}, raw=kv,
                          record_timestamp=event_time, source_format='log')
             if 'support_ticket_read_completed' in event:
+                c = self._clean
                 ids = {
-                    'email': kv.get('requester_email') or kv.get('customer_email'),
-                    'phone': kv.get('requester_phone') or kv.get('customer_phone'),
-                    'customer_reference': kv.get('customer_reference'),
+                    'email': c(kv.get('requester_email')) or c(kv.get('customer_email')),
+                    'phone': c(kv.get('requester_phone')) or c(kv.get('customer_phone')),
+                    'customer_reference': c(kv.get('customer_reference')),
                 }
                 if any(ids.values()):
+                    # Only the stable reference left means the ticket is redacted.
+                    state = 'PRESENT' if (ids['email'] or ids['phone']) else 'REDACTED'
                     return m(file_id, captured_at, 'support_platform', resource_id,
-                             'support_record', 'PRESENT', ids, raw=kv,
+                             'support_record', state, ids, raw=kv,
                              record_timestamp=event_time, source_format='log')
 
         elif service == 'integration_service':
@@ -1111,6 +1120,12 @@ class EvidenceParser:
                          'backup', state, ids, raw=kv,
                          record_timestamp=event_time, source_format='log')
 
+        elif service == 'legal_service':
+            if 'retained_order_loaded' in event:
+                return m(file_id, captured_at, 'legal_service', resource_id,
+                         'legal_hold', 'PRESENT', {}, raw=kv,
+                         record_timestamp=event_time, source_format='log')
+
         elif service == 'security_service':
             if 'audit_record_read_completed' in event:
                 rows = int(kv.get('rows', 0))
@@ -1149,12 +1164,37 @@ class EvidenceParser:
         'DATA_FLOW': ('integration_service', 'connector'),
         'BACKUP_ARCHIVE': ('backup_service', 'backup'),
         'SECURITY_AUDIT_LOG': ('security_service', 'security_audit'),
+        'LEGAL_HOLD_RECORD': ('legal_service', 'legal_hold'),
     }
     _STATUS_MAP = {
         'NOT_FOUND': 'ABSENT', 'FOUND': 'PRESENT', 'IDENTIFIABLE': 'PRESENT',
         'ANONYMIZED': 'ANONYMIZED', 'REDACTED': 'REDACTED',
         'ACTIVE': 'ACTIVE', 'DISABLED': 'DISABLED', 'BLOCKED': 'BLOCKED',
     }
+
+    def _add_manifest_rows(self, records, file_id, default_captured_at, index,
+                            source_format='json_generic', file_captured_at=None):
+        """Rows shaped like an export/audit manifest entry: each names its own
+        record_type/system/result rather than belonging to one fixed collection."""
+        for d in records:
+            if not isinstance(d, dict):
+                continue
+            rid = d.get('resource_id')
+            if not rid:
+                continue
+            mapping = self._TYPE_MAP.get(str(d.get('record_type', '')).upper())
+            if not mapping:
+                continue
+            sys_id, rec_type = mapping
+            sys_id = d.get('system') or sys_id
+            slot, val = self._classify_identifier(d.get('subject_reference') or d.get('lookup_value'))
+            ids = {slot: val} if slot else {}
+            state = self._STATUS_MAP.get(str(d.get('result', '')).upper(), 'PRESENT')
+            ts = d.get('recorded_at', default_captured_at)
+            index.add_record(self._make(
+                file_id, file_captured_at or ts, sys_id, rid, rec_type, state, ids, raw=d,
+                record_timestamp=ts, source_format=source_format,
+            ))
 
     def _parse_text_file(self, filepath, file_id, captured_at, index):
         try:
@@ -1196,7 +1236,7 @@ class EvidenceParser:
     # Regex patterns to extract structured facts from PDF text
     _EMAIL_RE   = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
     _PHONE_RE   = re.compile(r'(?:\+\d[\d\s\-().]{6,20}\d)')
-    _RID_RE     = re.compile(r'\b(account|search|analytics|support|export|data_flow|backup|audit_record|tombstone)_[\w]+\b')
+    _RID_RE     = re.compile(r'\b(account|search|analytics|support|export|data_flow|backup|audit_record|tombstone|legal_hold)_[\w]+\b')
     _USER_RE    = re.compile(r'\buser_\d+\b')
 
     def _pdf_cache_path(self, filepath):
@@ -1300,6 +1340,7 @@ class EvidenceParser:
         if p.startswith('tombstone_'):  return 'identity_service',   'account_tombstone'
         if p.startswith('object_'):     return 'object_storage',     'support_attachment'
         if p.startswith('marketing_'):  return 'marketing_platform', 'marketing_profile'
+        if p.startswith('legal_hold_'): return 'legal_service',      'legal_hold'
         return 'unknown_service', rid.split('_')[0]
 
     @staticmethod

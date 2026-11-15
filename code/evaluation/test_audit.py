@@ -88,6 +88,75 @@ with tempfile.TemporaryDirectory() as tmp:
     assert index.find_matching_records(subject, TS + '9Z') == {}
     assert list(index.find_matching_records(subject, TS + '9Z', by_record_time=True)) == ['audit_record_1']
 
+    # A ticket read showing only the stable reference is redacted, not exposed.
+    log = evidence_dir / 'ticket.log'
+    log.write_text(
+        TS + '1Z level=INFO service=support_platform trace_id=tr-3 event=support_ticket_read_completed '
+        'resource_id=support_2 customer_reference=user_01 requester_name=null '
+        'requester_email=null requester_phone=null', encoding='utf-8')
+    index = EvidenceIndex()
+    parser._parse_log_file(log, 'f1', '2026-01-01T00:00:09Z', index)
+    assert [r.state for r in index.all_records] == ['REDACTED']
+
+    # Tombstones and ticket attachments in an SQL inventory table, a lookup
+    # row in log form, and a legal hold named only on its trace are all read.
+    sql = evidence_dir / 'inv.sql'
+    sql.write_text(
+        "CREATE TABLE inv (resource_id TEXT, system TEXT, collection_name TEXT, record_json TEXT, updated_at TEXT);\n"
+        "INSERT INTO inv VALUES('tombstone_1','identity_service','deleted_customer_references',"
+        "'{\"resource_id\":\"tombstone_1\",\"subject_reference\":\"user_01\",\"name\":null,\"email\":null}','" + TS + "1Z');\n"
+        "INSERT INTO inv VALUES('tombstone_2','identity_service','deleted_customer_references',"
+        "'{\"resource_id\":\"tombstone_2\",\"subject_reference\":\"user_02\",\"email\":\"b@example.test\"}','" + TS + "1Z');\n"
+        "INSERT INTO inv VALUES('support_9','support_platform','ticket_attachments',"
+        "'{\"resource_id\":\"support_9\",\"uploaded_by\":\"a@example.test\"}','" + TS + "1Z');\n",
+        encoding='utf-8')
+    index = EvidenceIndex()
+    parser._parse_sql_file(sql, 'f1', TS + '9Z', index)
+    assert sorted((r.resource_id, r.record_type, r.state) for r in index.all_records) == [
+        ('support_9', 'support_attachment', 'PRESENT'),
+        ('tombstone_1', 'account_tombstone', 'REDACTED'),
+        ('tombstone_2', 'account_tombstone', 'PRESENT')], index.all_records
+    log = evidence_dir / 'lookup.log'
+    log.write_text('\n'.join([
+        TS + '1Z WARN service=delivery_service event=record_lookup seq=1 system="analytics_platform" '
+        'resource_id="analytics_1" record_type="ANALYTICS_PROFILE" result="IDENTIFIABLE" subject_reference="a@example.test"',
+        TS + '2Z | DEBUG | legal_service | tr-9 | retained_order_query_started | subject_ref="user_01"',
+        TS + '3Z | INFO | legal_service | tr-9 | retained_order_loaded | resource_id="legal_hold_3" access="allowed"',
+    ]), encoding='utf-8')
+    index = EvidenceIndex()
+    parser._parse_log_file(log, 'f1', TS + '9Z', index)
+    assert [(r.resource_id, r.record_type, r.state) for r in index.all_records] == [
+        ('analytics_1', 'analytics_profile', 'PRESENT'),
+        ('legal_hold_3', 'legal_hold', 'PRESENT')], index.all_records
+    assert index.all_records[1].identifiers.get('customer_reference') == 'user_01'
+
+    # Self-describing rows are read for every category, in any wrapper
+    # collection; a bundle keeps its own capture time so it stays uncitable
+    # when exported after the audit. Legal holds are a known collection.
+    rows = [
+        {'recorded_at': TS + '1Z', 'system': 'search_service', 'resource_id': 'search_1',
+         'record_type': 'SEARCH_INDEX_ENTRY', 'result': 'FOUND', 'lookup_value': 'a@example.test'},
+        {'recorded_at': TS + '1Z', 'system': 'integration_service', 'resource_id': 'data_flow_1',
+         'record_type': 'DATA_FLOW', 'result': 'DISABLED', 'subject_reference': 'user_01'},
+        {'recorded_at': TS + '1Z', 'system': 'legal_service', 'resource_id': 'legal_hold_1',
+         'record_type': 'LEGAL_HOLD_RECORD', 'result': 'FOUND', 'subject_reference': 'user_01'},
+    ]
+    expected = [('search_1', 'search_document', 'PRESENT'),
+                ('data_flow_1', 'connector', 'DISABLED'),
+                ('legal_hold_1', 'legal_hold', 'PRESENT')]
+    index = EvidenceIndex()
+    parser._parse_generic_json({'records': rows}, 'f1', TS + '9Z', index)
+    assert [(r.resource_id, r.record_type, r.state) for r in index.all_records] == expected
+    index = EvidenceIndex()
+    parser._parse_snapshot_bundle({'snapshots': [
+        {'data_store': 'any_wrapper', 'collection': 'operational_record_history', 'records': rows},
+        {'data_store': 'legal_service', 'collection': 'retained_order_records',
+         'records': [{'resource_id': 'legal_hold_2', 'subject_reference': 'user_01'}]},
+    ]}, 'f1', '2026-01-02T00:00:00Z', index)
+    assert [(r.resource_id, r.record_type, r.state) for r in index.all_records] == expected + [
+        ('legal_hold_2', 'legal_hold', 'PRESENT')]
+    assert {r.captured_at for r in index.all_records} == {'2026-01-02T00:00:00Z'}
+
 # 3. Ordering score: reversed order scores 0, same order scores 1
 from evaluate import kendall_tau_normalized
 assert kendall_tau_normalized([0, 1, 2], [2, 1, 0]) == 0.0

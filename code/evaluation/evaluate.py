@@ -427,12 +427,12 @@ def _write_baseline(path, m_all, m_tuning, m_holdout, tuning, holdout):
         "| custom_16 | Deletion with policy-required retention | Deletion authorized |",
         "\nDefinitions are in `code/evaluation/custom_cases/custom_cases.json`.\n",
         "\n## Final Full-Dataset Results\n",
-        "The deterministic offline run produced 518 rows: 165 COMPLETE, "
-        "334 INCOMPLETE, and 19 NOT_APPLICABLE. No authorized row has "
+        "The deterministic offline run produced 518 rows: 155 COMPLETE, "
+        "344 INCOMPLETE, and 19 NOT_APPLICABLE. No authorized row has "
         "empty steps.\n\n",
         "The sample metrics cannot validate the log-derived rows because the "
         "32 public samples do not contain those log formats.\n\n",
-        "Compared with the baseline tag, 226 rows differ.\n\n",
+        "Compared with the baseline tag, 279 rows differ.\n\n",
         "The numeric-suffix extrapolation trial was rejected: it lacked a "
         "participant-visible identity link, reduced held-out step precision "
         "and F1, and changed 58 rows.\n\n",
