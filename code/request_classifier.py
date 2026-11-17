@@ -56,8 +56,10 @@ NON_DELETION_SOLE_PATTERNS = [
 # ── Strong deletion-intent patterns (multilingual) ───────────────────────
 DELETION_STRONG = [
     # English
-    r"\b(permanently\s+)?(delete|erase|remove|wipe|purge)\b.{0,60}\b(account|profile|data|personal.information|records)\b",
-    r"\b(account|profile|data|personal.information|records)\b.{0,60}\b(permanently\s+)?(delete|erase|remove|wipe|purge)\b",
+    # Inflected forms count too: "would like it permanently deleted", "to be erased".
+    r"\b(permanently\s+)?(delet|eras|remov|wip|purg)(e|ed|ing)\b.{0,60}\b(account|profile|data|personal.information|records)\b",
+    r"\b(account|profile|data|personal.information|records)\b.{0,60}\b(permanently\s+)?(delet|eras|remov|wip|purg)(e|ed|ing)\b",
+    r"\b(begin|start|initiate)\b.{0,20}\bdeletion\b",
     r"\b(close|terminate|deactivate)\b.{0,60}\b(account|profile)\b.{0,60}\b(delet|eras|remov|wip|purg)",
     r"\bdeletion\s+(request|of\s+(my|the)\s+(account|data|profile))\b",
     r"\brequest.{0,20}\bdeletion\b",

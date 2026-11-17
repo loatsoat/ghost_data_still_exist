@@ -110,5 +110,33 @@
     "request_text": "Please delete my account and personal data, but retain any records that the law requires you to keep.",
     "expected_authorizes_deletion": true,
     "notes": "Explicit deletion request while acknowledging policy-required retention."
+  },
+  {
+    "id": "custom_17",
+    "type": "deletion_past_participle",
+    "request_text": "I no longer use this account and would like it permanently deleted. Please contact me if you need information to verify the request.",
+    "expected_authorizes_deletion": true,
+    "notes": "Regression: 'deleted' (not 'delete') plus 'need information' was misread as an information request."
+  },
+  {
+    "id": "custom_18",
+    "type": "deletion_passive_erased",
+    "request_text": "I would like the account associated with this address to be erased. Please contact me if you need information to verify the request.",
+    "expected_authorizes_deletion": true,
+    "notes": "Regression: passive 'to be erased' had no strong deletion match."
+  },
+  {
+    "id": "custom_19",
+    "type": "deletion_process_start",
+    "request_text": "Please begin the deletion process for the account using this email address.",
+    "expected_authorizes_deletion": true,
+    "notes": "Regression: 'begin the deletion process' had no strong deletion match."
+  },
+  {
+    "id": "custom_20",
+    "type": "correction_without_removing",
+    "request_text": "My surname is misspelled on the account. Can you correct it without removing any of my records?",
+    "expected_authorizes_deletion": false,
+    "notes": "Guard: the wider 'removing ... records' match must not override the explicit 'without removing'."
   }
 ]
