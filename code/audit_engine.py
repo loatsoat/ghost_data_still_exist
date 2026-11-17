@@ -5,13 +5,10 @@ Tracks data flows and restore risks from system_activity as of audit_at.
 Uses a reverse identifier index for matching.
 """
 
-from collections import defaultdict
-
-# Import activity linker for Phase 3/5 data-flow and restore tracking
 import copy
 import re
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from collections import defaultdict
+
 from activity_linker import SystemActivityLinker
 from evidence_parser import EvidenceParser, EvidenceRecord
 

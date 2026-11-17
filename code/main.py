@@ -16,13 +16,8 @@ Run with:
     python code/main.py
 """
 
-import os
-import sys
 import time
 from pathlib import Path
-
-# Add code directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from data_loader import DataLoader
 from evidence_parser import EvidenceParser
