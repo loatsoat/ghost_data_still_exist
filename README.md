@@ -52,17 +52,23 @@ deletion requests ─► 1. load ─► 2. classify ─► 3. resolve identity �
 ```
 code/
 ├── main.py                CLI entry point: runs the six stages and prints a summary
-├── data_loader.py         reads the CSV inputs from dataset/
+├── data_loader.py         reads the CSV inputs from dataset/; fails loudly if a file is missing
 ├── request_classifier.py  decides whether a request authorizes deletion (multilingual patterns)
 ├── identity_resolver.py   maps an email to every current and historical identifier of the user
-├── evidence_parser.py     parses SQL, JSON, log, text, PDF and image evidence into one index
+├── evidence/              one parser per evidence format, combined into one index
+│   ├── records.py         EvidenceRecord and the time-aware EvidenceIndex
+│   ├── parser.py          EvidenceParser: dispatches each file to its format parser
+│   └── sql.py · json_files.py · logs.py · text.py · pdf.py · image.py
 ├── activity_linker.py     links sync/restore/export activity to a user and builds state timelines
-├── audit_engine.py        applies the deletion policy at audit time and builds the ordered steps
+├── audit_engine.py        find: each record's state at audit time vs. the deletion policy
+├── policy.py              rule action → required operation and final state
+├── steps.py               plan + verify: ordered, numbered FINDING/REMEDIATION/VERIFICATION steps
 ├── output_writer.py       writes output.csv and validates its format before replacing the old file
 └── evaluation/
     ├── evaluate.py        precision / recall / sequence metrics against the 32 public samples
     ├── test_audit.py      audit-path tests (fail-closed identity, log dialects, ordering)
     ├── test_classifier.py classifier tests, including 20 custom cases
+    ├── test_data_loader.py missing-dataset handling
     └── custom_cases/      the custom classifier cases (JSON)
 dataset/                   challenge input data (fictional people and records)
 evaluation/                evaluation and usage reports
