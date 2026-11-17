@@ -15,7 +15,10 @@ class DataLoader:
         """Read a CSV file and return list of dicts."""
         filepath = self.dataset_dir / filename
         if not filepath.exists():
-            return []
+            # An empty list here would silently produce an empty, "valid" output.csv.
+            raise FileNotFoundError(
+                f"{filepath} not found. Put the challenge dataset in {self.dataset_dir}."
+            )
         with open(filepath, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             return list(reader)
