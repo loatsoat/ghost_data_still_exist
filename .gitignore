@@ -1,10 +1,18 @@
+# caches
 .pdf_cache/
 .llm_cache/
 .snapshots/
 __pycache__/
 *.pyc
+.pytest_cache/
 
-# AI agent scaffolding (kept locally, not published)
-AGENTS.md
+# AI agent scaffolding and session logs
 CLAUDE.md
+AGENTS.md
 agent_trace_instructions.md
+log.txt
+*.log
+
+# build artifacts and local secrets
+*.zip
+.env
