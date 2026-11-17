@@ -275,9 +275,10 @@ def run_pipeline(requests, user_identities, user_audit_log,
         identity = identity_resolver.resolve(req['email'])
         is_del   = request_classifier.classify(req.get('request_text', ''))
 
-        if not is_del or identity is None:
+        if not is_del:
             actual[cid] = {'status': 'NOT_APPLICABLE', 'steps': []}
             continue
+        # Same as main.py: an unresolved identity goes to the engine, which fails closed.
 
         result = audit_engine.audit(req, identity)
         actual[cid] = {'status': result['deletion_status'], 'steps': result['steps_json']}
