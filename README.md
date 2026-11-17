@@ -62,7 +62,7 @@ code/
 └── evaluation/
     ├── evaluate.py        precision / recall / sequence metrics against the 32 public samples
     ├── test_audit.py      audit-path tests (fail-closed identity, log dialects, ordering)
-    ├── test_classifier.py classifier tests, including 16 custom cases
+    ├── test_classifier.py classifier tests, including 20 custom cases
     └── custom_cases/      the custom classifier cases (JSON)
 dataset/                   challenge input data (fictional people and records)
 evaluation/                evaluation and usage reports
@@ -90,9 +90,9 @@ ending:
 [5/6] Writing output.csv...
   Validation: Valid: 518 rows
 [6/6] Summary:
-  COMPLETE: 155
-  INCOMPLETE: 344
-  NOT_APPLICABLE: 19
+  COMPLETE: 157
+  INCOMPLETE: 351
+  NOT_APPLICABLE: 10
 ```
 
 To score the pipeline against the public samples with known answers:
@@ -158,9 +158,10 @@ with step precision 0.994 and recall 0.850. Details are in
 
 ## Limitations
 
-- **Pattern-based request classification.** Some phrasings slip through. A
-  request such as "I would like it permanently deleted … contact me if you
-  need information to verify" can be misread as an information request.
+- **Pattern-based request classification.** Deletion intent is recognized by
+  multilingual patterns, not by a language model, so an unusual phrasing can
+  still be misread. Each misread phrasing found so far is a regression case in
+  `custom_cases.json`.
 - **No guessing.** When no visible evidence ties a record to the person, the
   record isn't reported. Three public sample cases therefore come out
   `INCOMPLETE` with no steps.

@@ -26,7 +26,7 @@ sequence accuracy is reported separately above.
 
 ## Participant-created evaluation cases
 
-The classifier suite exercises 16 custom cases in
+The classifier suite exercises 20 custom cases in
 `code/evaluation/custom_cases/custom_cases.json`:
 
 | Cases | Scenario | Expected behavior |
@@ -39,15 +39,17 @@ The classifier suite exercises 16 custom cases in
 | custom_12 | Tombstone/redaction request | Deletion authorized |
 | custom_13–custom_15 | Email change, login recovery, and invoice-copy requests | `NOT_APPLICABLE` |
 | custom_16 | Deletion request with policy-required legal retention | Deletion authorized |
+| custom_17–custom_19 | "Permanently deleted", "to be erased", "begin the deletion process" | Deletion authorized |
+| custom_20 | Correction "without removing any of my records" | `NOT_APPLICABLE` |
 
-The classifier test command passed all 16 custom cases, along with the
+The classifier test command passed all 20 custom cases, along with the
 previously misclassified public examples.
 
 ## Final full-dataset run
 
 The locked full-dataset output contains one row for each of the 518 requests:
-155 `COMPLETE`, 344 `INCOMPLETE`, and 19 `NOT_APPLICABLE`. No authorized
-row has empty `steps_json`. Compared with the `baseline` tag, 279 rows
+157 `COMPLETE`, 351 `INCOMPLETE`, and 10 `NOT_APPLICABLE`. No authorized
+row has empty `steps_json`. Compared with the `baseline` tag, 288 rows
 differ.
 These counts are output composition, not ground-truth accuracy: no full
 evaluation labels are available in participant-facing data.
@@ -166,3 +168,4 @@ samples do not contain those log formats.
 | Manifest-style JSON rows other than account rows were ignored, and legal holds were unknown to the engine. | One reader for every self-describing row; legal-hold collection mapped to the retain rule; late bundles stay uncitable. |
 | A log value of `null` was treated as a present identifier. | Null-cleaned the ticket fields; reference-only tickets are `REDACTED`. |
 | Tombstones and ticket attachments in SQL inventory tables, and lookup rows in log form, were not read. | Mapped both collections and routed lookup log rows through the manifest reader; a per-file id coverage audit now shows no unread non-decoy id. |
+| 9 of 19 `NOT_APPLICABLE` rows were plain deletion requests: "permanently deleted" and "to be erased" missed the base-verb patterns, then "need information to verify" matched the information-request rule. | Deletion verbs now match inflected forms and "begin the deletion process"; four regression cases added. Exactly those 9 rows changed (7 `INCOMPLETE`, 2 `COMPLETE`); public-sample metrics unchanged. |
