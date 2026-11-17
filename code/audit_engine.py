@@ -10,92 +10,14 @@ import re
 from collections import defaultdict
 
 from activity_linker import SystemActivityLinker
-from evidence_parser import EvidenceParser, EvidenceRecord
-
-
-# Operation order for sorting within each phase
-FINDING_ORDER = [
-    'REPORT_REMAINING_RECORD',
-    'REPORT_EXPOSED_PII',
-    'REPORT_ACTIVE_DATA_FLOW',
-    'REPORT_RESTORE_RISK',
-]
-
-REMEDIATION_ORDER = [
-    'DISABLE_DATA_FLOW',
-    'BLOCK_RESTORE',
-    'DELETE_RECORD',
-    'REDACT_RECORD',
-    'ANONYMIZE_RECORD',
-]
-
-VERIFICATION_ORDER = [
-    'VERIFY_RECORD_ABSENT',
-    'VERIFY_RECORD_PRESENT',
-    'VERIFY_RECORD_REDACTED',
-    'VERIFY_RECORD_ANONYMIZED',
-    'VERIFY_DATA_FLOW_DISABLED',
-    'VERIFY_RESTORE_BLOCKED',
-]
-
-# Map record type to data category (from deletion_rules.csv)
-RECORD_TYPE_TO_CATEGORY = {
-    'customer_profile': 'USER_PROFILE',
-    'search_document': 'SEARCH_INDEX_ENTRY',
-    'analytics_profile': 'ANALYTICS_PROFILE',
-    'support_record': 'SUPPORT_MESSAGE',
-    'support_attachment': 'SUPPORT_ATTACHMENT',
-    'user_export': 'USER_EXPORT',
-    'connector': None,  # Data flows are tracked from system_activity
-    'backup': 'BACKUP_ARCHIVE',
-    'security_audit': 'SECURITY_AUDIT_LOG',
-    'account_tombstone': 'ACCOUNT_TOMBSTONE',
-    'marketing_profile': 'MARKETING_PROFILE',
-    'secondary_identifier': 'SECONDARY_IDENTIFIER',
-    'legal_hold': 'LEGAL_HOLD_RECORD',
-}
-
-# Record types that may stay once direct identifiers are gone, and the state
-# a document showing none of them proves.
-IDENTIFIER_FREE_STATE = {
-    'account_tombstone': 'REDACTED',
-    'analytics_profile': 'ANONYMIZED',
-}
-
-# Map rule action to finding operation
-ACTION_TO_FINDING = {
-    'DELETE': 'REPORT_REMAINING_RECORD',
-    'REDACT': 'REPORT_EXPOSED_PII',
-    'ANONYMIZE': 'REPORT_EXPOSED_PII',
-}
-
-# Map rule action to remediation operation
-ACTION_TO_REMEDIATION = {
-    'DELETE': 'DELETE_RECORD',
-    'REDACT': 'REDACT_RECORD',
-    'ANONYMIZE': 'ANONYMIZE_RECORD',
-}
-
-# Map rule action to verification operation
-ACTION_TO_VERIFICATION = {
-    'DELETE': 'VERIFY_RECORD_ABSENT',
-    'REDACT': 'VERIFY_RECORD_REDACTED',
-    'ANONYMIZE': 'VERIFY_RECORD_ANONYMIZED',
-}
-
-# Verification state for each action
-ACTION_TO_VERIFICATION_STATE = {
-    'DELETE': 'ABSENT',
-    'REDACT': 'REDACTED',
-    'ANONYMIZE': 'ANONYMIZED',
-}
-
-# Remediation state for each action
-ACTION_TO_REMEDIATION_STATE = {
-    'DELETE': 'ABSENT',
-    'REDACT': 'REDACTED',
-    'ANONYMIZE': 'ANONYMIZED',
-}
+from evidence import EvidenceParser, EvidenceRecord
+from policy import (
+    RECORD_TYPE_TO_CATEGORY,
+    IDENTIFIER_FREE_STATE,
+    ACTION_TO_FINDING,
+    COMPLIANT_STATES,
+)
+from steps import plan_and_verify, verify_complete
 
 
 class AuditEngine:
@@ -201,20 +123,15 @@ class AuditEngine:
         return None
 
     def audit(self, request, identity):
-        """Audit a single deletion request."""
+        """Audit one deletion request: find violations, plan fixes, verify."""
         case_id = request['case_id']
-        audit_at = request['audit_at']
-
+        self.last_trace = {}
         if identity is None:
-            # Fail closed: a genuine deletion request whose subject we cannot
-            # resolve cannot be proven COMPLETE. Report INCOMPLETE rather than
-            # NOT_APPLICABLE, which is reserved for non-deletion requests.
-            return {
-                'case_id': case_id,
-                'deletion_status': 'INCOMPLETE',
-                'steps_json': [],
-            }
+            # Fail closed: a deletion request whose subject cannot be resolved
+            # cannot be proven COMPLETE (NOT_APPLICABLE is for non-deletion requests).
+            return {'case_id': case_id, 'deletion_status': 'INCOMPLETE', 'steps_json': []}
 
+        audit_at = request['audit_at']
         identifiers = {
             'user_id': identity.get('user_id'),
             'emails': identity.get('emails', set()),
@@ -222,183 +139,99 @@ class AuditEngine:
             'email_hashes': identity.get('email_hashes', set()),
             'name': identity.get('name'),
         }
-
-        # Find all matching evidence records
-        # A snapshot taken by audit_at but exported in a later bundle shows
-        # the state at audit_at, yet its file cannot be cited. Such records
-        # only add uncited verification steps to an INCOMPLETE case.
-        with_late = self.evidence_index.find_matching_records(
-            identifiers, audit_at, by_record_time=True)
-        matched_records = self.evidence_index.find_matching_records(identifiers, audit_at)
-        uncitable = {rid for rid in with_late if rid not in matched_records}
-        for rid in uncitable:
-            matched_records[rid] = with_late[rid]
-        self.last_trace = {}
-        self._add_catalog_linked_records(
-            identifiers, request.get('requested_at', ''), audit_at, matched_records)
-
-        # Also search system_activity for data flows, restore risks, and failed deletions
+        matched_records, uncitable = self._gather_records(
+            identifiers, request.get('requested_at', ''), audit_at)
         activity_findings = self._find_activity_findings(identifiers, audit_at, matched_records)
-
         if not matched_records and not activity_findings:
             self.last_trace = {}
-            return {
-                'case_id': case_id,
-                'deletion_status': 'INCOMPLETE',
-                'steps_json': [],
-            }
+            return {'case_id': case_id, 'deletion_status': 'INCOMPLETE', 'steps_json': []}
 
-        # Classify each matched record into findings or compliant
-        findings = []
-        compliant_resources = []  # (record, action) tuples for verification
-
-        for resource_id, record in matched_records.items():
-            record_type = record.record_type
-            state = record.state
-
-            if state is None:
-                continue
-
-            category = RECORD_TYPE_TO_CATEGORY.get(record_type)
-            if category is None:
-                # Connectors and backups are handled via activity findings
-                if record_type == 'connector' and state == 'ACTIVE':
-                    findings.append({
-                        'system_id': record.system_id,
-                        'resource_id': resource_id,
-                        'operation': 'REPORT_ACTIVE_DATA_FLOW',
-                        'state': 'ACTIVE',
-                        'evidence_id': record.file_id,
-                        'record_type': record_type,
-                        'action': None,
-                    })
-                elif record_type == 'connector' and state == 'DISABLED':
-                    compliant_resources.append((record, 'FLOW_DISABLED'))
-                elif record_type == 'backup' and state == 'ACTIVE':
-                    findings.append({
-                        'system_id': record.system_id,
-                        'resource_id': resource_id,
-                        'operation': 'REPORT_RESTORE_RISK',
-                        'state': 'ACTIVE',
-                        'evidence_id': record.file_id,
-                        'record_type': record_type,
-                        'action': None,
-                    })
-                elif record_type == 'backup' and state == 'BLOCKED':
-                    compliant_resources.append((record, 'RESTORE_BLOCKED'))
-                continue
-
-            rule = self.deletion_rules.get(category)
-            if not rule:
-                continue
-
-            action = rule['required_action']
-
-            # RETAIN means the record should stay - verify it's present
-            if action == 'RETAIN':
-                if state == 'PRESENT':
-                    compliant_resources.append((record, action))
-                elif record_type == 'backup' and state == 'BLOCKED':
-                    compliant_resources.append((record, 'RESTORE_BLOCKED'))
-                elif (record_type == 'backup' and state == 'ACTIVE'):
-                    findings.append({
-                        'system_id': record.system_id,
-                        'resource_id': resource_id,
-                        'operation': 'REPORT_RESTORE_RISK',
-                        'state': 'ACTIVE',
-                        'evidence_id': record.file_id,
-                        'record_type': record_type,
-                        'action': None,
-                    })
-                continue
-
-            # For DELETE, REDACT, ANONYMIZE actions
-            finding_op = ACTION_TO_FINDING.get(action)
-            remediation_op = ACTION_TO_REMEDIATION.get(action)
-            verification_op = ACTION_TO_VERIFICATION.get(action)
-
-            if not finding_op:
-                continue
-
-            # Determine if this record is a finding (non-compliant) or compliant
-            is_violation = False
-
-            if action == 'DELETE':
-                # Record should not exist
-                if state == 'PRESENT':
-                    is_violation = True
-                elif state == 'ABSENT':
-                    compliant_resources.append((record, action))
-                elif state in ('REDACTED', 'ANONYMIZED'):
-                    # Record was treated differently than expected - could be compliant or not
-                    # For DELETE, a redacted/anonymized record might be acceptable as a tombstone
-                    if record_type == 'customer_profile':
-                        # Account tombstone: redacted is compliant
-                        compliant_resources.append((record, action))
-                    else:
-                        is_violation = True
-
-            elif action == 'REDACT':
-                # Record should have PII removed but record kept
-                if state == 'PRESENT':
-                    is_violation = True
-                elif state == 'REDACTED':
-                    compliant_resources.append((record, action))
-                elif state == 'ABSENT':
-                    # Record was deleted entirely - could be compliant or a violation
-                    # For support messages, deletion is more than redaction
-                    # Let's treat as compliant since the PII is gone
-                    compliant_resources.append((record, action))
-
-            elif action == 'ANONYMIZE':
-                # Record should be unlinked from user
-                if state == 'PRESENT':
-                    is_violation = True
-                elif state == 'ANONYMIZED':
-                    compliant_resources.append((record, action))
-                elif state == 'ABSENT':
-                    compliant_resources.append((record, action))
-
-            if is_violation:
-                findings.append({
-                    'system_id': record.system_id,
-                    'resource_id': resource_id,
-                    'operation': finding_op,
-                    'state': 'PRESENT',
-                    'evidence_id': record.file_id,
-                    'record_type': record_type,
-                    'action': action,
-                })
-
-        # A finding must cite its evidence, so an uncitable record cannot be one.
-        findings = [f for f in findings if f['resource_id'] not in uncitable]
-
-        # Merge activity-based findings (data flows, restore risks)
+        findings, compliant = self._find(matched_records, uncitable)
         findings.extend(activity_findings)
-        if not findings:
-            # Every step of a COMPLETE case must cite evidence.
-            compliant_resources = [(record, action) for record, action in compliant_resources
-                                   if record.resource_id not in uncitable]
-
-        # Generate steps
         if findings:
-            steps = self._generate_incomplete_steps(
-                findings, matched_records, compliant_resources, audit_at
-            )
-            self.last_trace = self._build_trace(steps, matched_records)
-            return {
-                'case_id': case_id,
-                'deletion_status': 'INCOMPLETE',
-                'steps_json': steps,
-            }
+            status = 'INCOMPLETE'
+            steps = plan_and_verify(findings, compliant)
         else:
-            steps = self._generate_complete_steps(compliant_resources, matched_records, audit_at)
-            self.last_trace = self._build_trace(steps, matched_records)
+            # Every step of a COMPLETE case must cite evidence.
+            status = 'COMPLETE'
+            steps = verify_complete(
+                [(r, a) for r, a in compliant if r.resource_id not in uncitable])
+        self.last_trace = self._build_trace(steps, matched_records)
+        return {'case_id': case_id, 'deletion_status': status, 'steps_json': steps}
+
+    def _gather_records(self, identifiers, requested_at, audit_at):
+        """Evidence records for the subject at audit_at, plus the ids that cannot be cited.
+
+        A snapshot taken by audit_at but exported in a later bundle shows the
+        state at audit_at, yet its file cannot be cited. Such records only add
+        uncited verification steps to an INCOMPLETE case.
+        """
+        with_late = self.evidence_index.find_matching_records(
+            identifiers, audit_at, by_record_time=True)
+        matched = self.evidence_index.find_matching_records(identifiers, audit_at)
+        uncitable = {rid for rid in with_late if rid not in matched}
+        for rid in uncitable:
+            matched[rid] = with_late[rid]
+        self._add_catalog_linked_records(identifiers, requested_at, audit_at, matched)
+        return matched, uncitable
+
+    def _find(self, matched_records, uncitable):
+        """Split records into policy violations and compliant (record, action) pairs."""
+        findings, compliant = [], []
+        for resource_id, record in matched_records.items():
+            finding, ok = self._classify_record(resource_id, record)
+            # A finding must cite its evidence, so an uncitable record cannot be one.
+            if finding and resource_id not in uncitable:
+                findings.append(finding)
+            if ok:
+                compliant.append(ok)
+        return findings, compliant
+
+    def _classify_record(self, resource_id, record):
+        """Return (finding, compliant): a violation to report or a (record, action) to verify."""
+        record_type, state = record.record_type, record.state
+        if state is None:
+            return None, None
+
+        def finding(operation, action):
             return {
-                'case_id': case_id,
-                'deletion_status': 'COMPLETE',
-                'steps_json': steps,
+                'system_id': record.system_id, 'resource_id': resource_id,
+                'operation': operation,
+                'state': 'ACTIVE' if action is None else 'PRESENT',
+                'evidence_id': record.file_id, 'record_type': record_type, 'action': action,
             }
+
+        # Connectors have no policy category: an active one is a data flow to stop.
+        if record_type == 'connector':
+            if state == 'ACTIVE':
+                return finding('REPORT_ACTIVE_DATA_FLOW', None), None
+            return None, ((record, 'FLOW_DISABLED') if state == 'DISABLED' else None)
+
+        rule = self.deletion_rules.get(RECORD_TYPE_TO_CATEGORY.get(record_type))
+        if not rule:
+            return None, None
+        action = rule['required_action']
+        if action == 'RETAIN':
+            if state == 'PRESENT':
+                return None, (record, action)
+            # A retained backup must not be able to restore the deleted data.
+            if record_type == 'backup' and state == 'ACTIVE':
+                return finding('REPORT_RESTORE_RISK', None), None
+            if record_type == 'backup' and state == 'BLOCKED':
+                return None, (record, 'RESTORE_BLOCKED')
+            return None, None
+        if action not in ACTION_TO_FINDING:
+            return None, None
+        if state == 'PRESENT':
+            return finding(ACTION_TO_FINDING[action], action), None
+        if state in COMPLIANT_STATES[action]:
+            return None, (record, action)
+        if action == 'DELETE' and state in ('REDACTED', 'ANONYMIZED'):
+            # A redacted account profile is an allowed tombstone; anything else is not deleted.
+            if record_type == 'customer_profile':
+                return None, (record, action)
+            return finding(ACTION_TO_FINDING[action], action), None
+        return None, None
 
     def _add_catalog_linked_records(self, identifiers, requested_at, audit_at,
                                     matched_records):
@@ -574,228 +407,3 @@ class AuditEngine:
             })
 
         return findings
-
-    def _generate_incomplete_steps(self, findings, matched_records,
-                                    compliant_resources, audit_at):
-        """Generate steps for an INCOMPLETE case."""
-        steps = []
-        step_no = 1
-
-        # Sort findings by operation order, then system_id, then resource_id
-        sorted_findings = sorted(findings, key=lambda f: (
-            FINDING_ORDER.index(f['operation']) if f['operation'] in FINDING_ORDER else 99,
-            f['system_id'],
-            f['resource_id'],
-        ))
-
-        # FINDING phase
-        for finding in sorted_findings:
-            steps.append({
-                'step_no': step_no,
-                'phase': 'FINDING',
-                'system_id': finding['system_id'],
-                'resource_id': finding['resource_id'],
-                'operation': finding['operation'],
-                'state': finding['state'],
-                'evidence_id': finding['evidence_id'],
-            })
-            step_no += 1
-
-        # REMEDIATION phase - derive from finding action
-        remediations = []
-        for finding in sorted_findings:
-            action = finding.get('action')
-
-            if finding['operation'] == 'REPORT_ACTIVE_DATA_FLOW':
-                remediations.append({
-                    'system_id': finding['system_id'],
-                    'resource_id': finding['resource_id'],
-                    'operation': 'DISABLE_DATA_FLOW',
-                    'state': 'DISABLED',
-                })
-            elif finding['operation'] == 'REPORT_RESTORE_RISK':
-                remediations.append({
-                    'system_id': finding['system_id'],
-                    'resource_id': finding['resource_id'],
-                    'operation': 'BLOCK_RESTORE',
-                    'state': 'BLOCKED',
-                })
-            elif action and action in ACTION_TO_REMEDIATION:
-                remediations.append({
-                    'system_id': finding['system_id'],
-                    'resource_id': finding['resource_id'],
-                    'operation': ACTION_TO_REMEDIATION[action],
-                    'state': ACTION_TO_REMEDIATION_STATE[action],
-                })
-
-        # Sort remediations
-        remediations.sort(key=lambda r: (
-            REMEDIATION_ORDER.index(r['operation']) if r['operation'] in REMEDIATION_ORDER else 99,
-            r['system_id'],
-            r['resource_id'],
-        ))
-
-        for rem in remediations:
-            steps.append({
-                'step_no': step_no,
-                'phase': 'REMEDIATION',
-                'system_id': rem['system_id'],
-                'resource_id': rem['resource_id'],
-                'operation': rem['operation'],
-                'state': rem['state'],
-                'evidence_id': '',
-            })
-            step_no += 1
-
-        # VERIFICATION phase
-        # For each finding, verify the required final state
-        # For compliant resources (already correct state), verify them too
-        verifications = []
-
-        # Verification for findings (future state after remediation)
-        for finding in sorted_findings:
-            action = finding.get('action')
-
-            if finding['operation'] == 'REPORT_ACTIVE_DATA_FLOW':
-                verifications.append({
-                    'system_id': finding['system_id'],
-                    'resource_id': finding['resource_id'],
-                    'operation': 'VERIFY_DATA_FLOW_DISABLED',
-                    'state': 'DISABLED',
-                })
-            elif finding['operation'] == 'REPORT_RESTORE_RISK':
-                verifications.append({
-                    'system_id': finding['system_id'],
-                    'resource_id': finding['resource_id'],
-                    'operation': 'VERIFY_RESTORE_BLOCKED',
-                    'state': 'BLOCKED',
-                })
-            elif action and action in ACTION_TO_VERIFICATION:
-                verifications.append({
-                    'system_id': finding['system_id'],
-                    'resource_id': finding['resource_id'],
-                    'operation': ACTION_TO_VERIFICATION[action],
-                    'state': ACTION_TO_VERIFICATION_STATE[action],
-                })
-
-        # Verification for compliant resources (current state is already correct)
-        for record, action in compliant_resources:
-            if action == 'RETAIN':
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': 'VERIFY_RECORD_PRESENT',
-                    'state': 'PRESENT',
-                })
-            elif action == 'FLOW_DISABLED':
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': 'VERIFY_DATA_FLOW_DISABLED',
-                    'state': 'DISABLED',
-                })
-            elif action == 'RESTORE_BLOCKED':
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': 'VERIFY_RESTORE_BLOCKED',
-                    'state': 'BLOCKED',
-                })
-            elif action in ACTION_TO_VERIFICATION:
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': ACTION_TO_VERIFICATION[action],
-                    'state': ACTION_TO_VERIFICATION_STATE[action],
-                })
-
-        # Sort verifications
-        verifications.sort(key=lambda v: (
-            VERIFICATION_ORDER.index(v['operation']) if v['operation'] in VERIFICATION_ORDER else 99,
-            v['system_id'],
-            v['resource_id'],
-        ))
-
-        # Deduplicate
-        seen = set()
-        for v in verifications:
-            key = (v['operation'], v['system_id'], v['resource_id'])
-            if key not in seen:
-                seen.add(key)
-                steps.append({
-                    'step_no': step_no,
-                    'phase': 'VERIFICATION',
-                    'system_id': v['system_id'],
-                    'resource_id': v['resource_id'],
-                    'operation': v['operation'],
-                    'state': v['state'],
-                    'evidence_id': '',
-                })
-                step_no += 1
-
-        return steps
-
-    def _generate_complete_steps(self, compliant_resources, matched_records, audit_at):
-        """Generate verification steps for a COMPLETE case."""
-        steps = []
-
-        verifications = []
-
-        for record, action in compliant_resources:
-            if action == 'RETAIN':
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': 'VERIFY_RECORD_PRESENT',
-                    'state': 'PRESENT',
-                    'evidence_id': record.file_id,
-                })
-            elif action == 'FLOW_DISABLED':
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': 'VERIFY_DATA_FLOW_DISABLED',
-                    'state': 'DISABLED',
-                    'evidence_id': record.file_id,
-                })
-            elif action == 'RESTORE_BLOCKED':
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': 'VERIFY_RESTORE_BLOCKED',
-                    'state': 'BLOCKED',
-                    'evidence_id': record.file_id,
-                })
-            elif action in ACTION_TO_VERIFICATION:
-                verifications.append({
-                    'system_id': record.system_id,
-                    'resource_id': record.resource_id,
-                    'operation': ACTION_TO_VERIFICATION[action],
-                    'state': ACTION_TO_VERIFICATION_STATE[action],
-                    'evidence_id': record.file_id,
-                })
-
-        # Sort verifications
-        verifications.sort(key=lambda v: (
-            VERIFICATION_ORDER.index(v['operation']) if v['operation'] in VERIFICATION_ORDER else 99,
-            v['system_id'],
-            v['resource_id'],
-        ))
-
-        # Deduplicate
-        seen = set()
-        for v in verifications:
-            key = (v['operation'], v['system_id'], v['resource_id'])
-            if key not in seen:
-                seen.add(key)
-                steps.append({
-                    'step_no': len(steps) + 1,
-                    'phase': 'VERIFICATION',
-                    'system_id': v['system_id'],
-                    'resource_id': v['resource_id'],
-                    'operation': v['operation'],
-                    'state': v['state'],
-                    'evidence_id': v['evidence_id'],
-                })
-
-        return steps

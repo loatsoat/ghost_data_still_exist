@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 from audit_engine import AuditEngine
-from evidence_parser import EvidenceIndex, EvidenceParser
+from evidence import EvidenceIndex, EvidenceParser
 
 def test_audit_path():
     # 1. Unresolved identity

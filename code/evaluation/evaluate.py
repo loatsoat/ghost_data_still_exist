@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data_loader import DataLoader
-from evidence_parser import EvidenceParser
+from evidence import EvidenceParser
 from identity_resolver import IdentityResolver
 from request_classifier import RequestClassifier
 from audit_engine import AuditEngine

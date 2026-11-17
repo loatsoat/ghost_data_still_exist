@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from data_loader import DataLoader
-from evidence_parser import EvidenceParser
+from evidence import EvidenceParser
 from identity_resolver import IdentityResolver
 from request_classifier import RequestClassifier
 from audit_engine import AuditEngine
@@ -44,12 +44,17 @@ def main():
     # === Step 1: Load CSV data ===
     print("[1/6] Loading CSV data...")
     loader = DataLoader(dataset_dir)
-    deletion_requests = loader.load_deletion_requests()
-    user_identities = loader.load_user_identities()
-    user_audit_log = loader.load_user_audit_log()
-    system_activity = loader.load_system_activity()
-    deletion_rules = loader.load_deletion_rules()
-    evidence_manifest = loader.load_evidence_manifest()
+    try:
+        deletion_requests = loader.load_deletion_requests()
+        user_identities = loader.load_user_identities()
+        user_audit_log = loader.load_user_audit_log()
+        system_activity = loader.load_system_activity()
+        deletion_rules = loader.load_deletion_rules()
+        evidence_manifest = loader.load_evidence_manifest()
+    except FileNotFoundError as e:
+        raise SystemExit(f"error: {e}") from None
+    if not deletion_requests:
+        raise SystemExit(f"error: {dataset_dir / 'deletion_requests.csv'} has no requests")
 
     print(f"  Deletion requests: {len(deletion_requests)}")
     print(f"  User identities: {len(user_identities)}")
