@@ -3,3 +3,8 @@
 .snapshots/
 __pycache__/
 *.pyc
+
+# AI agent scaffolding (kept locally, not published)
+AGENTS.md
+CLAUDE.md
+agent_trace_instructions.md
